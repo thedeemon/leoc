@@ -1,0 +1,11 @@
+syntax: glob
+._bcdi/*
+._d/*
+._ncdi/*
+*.annot
+*.cmi
+*.cmo
+*.cmx
+*.obj
+*.err
+*.out

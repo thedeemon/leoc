@@ -1,0 +1,2612 @@
+   0  $accept : %entry% $end
+
+   1  program : stmts opt_terms Leof
+
+   2  stmts : stmt
+   3        | stmts terms stmt
+
+   4  stmt : Lident params_opt Leq expr
+   5       | lvalue Lwrite expr
+   6       | Lfor name_seq_list opt_terms stmts opt_terms Lend
+   7       | Lreturn expr
+   8       | expr
+
+   9  params_opt :
+  10             | Llparen params Lrparen
+
+  11  params : Lident
+  12         | Lident Lcomma params
+
+  13  lvalue : Lident
+  14         | Lident Llbracket expr Lrbracket
+  15         | Lident Llbracket seq Lrbracket
+
+  16  name_seq_list : name_seq
+  17                | name_seq_list Lcomma name_seq
+
+  18  name_seq : Lident Lin seq
+
+  19  seq : Lident
+  20      | expr Ldot2 expr
+
+  21  expr : Lint
+  22       | Lident
+  23       | Lif condition then_ expr if_tail
+  24       | Ldo opt_terms stmts opt_terms Lend
+  25       | Llcurly opt_terms stmts opt_terms Lrcurly
+  26       | Lident Llparen args Lrparen
+  27       | Lident Llbracket expr Lrbracket
+  28       | Lident Llbracket seq Lrbracket
+  29       | Lpipe expr Lpipe
+  30       | expr Lhead
+  31       | expr Ltail
+  32       | arith
+  33       | Lnew atype Llbracket expr Lrbracket
+  34       | Lbackslash params Lfollow expr
+
+  35  arith : expr Lplus expr
+  36        | expr Lminus expr
+  37        | expr Lmul expr
+  38        | expr Ldiv expr
+  39        | expr Lmod expr
+  40        | expr Lxor expr
+  41        | expr Ldot2 expr
+  42        | Llparen arith Lrparen
+
+  43  condition : expr Llt expr
+  44            | expr Lgt expr
+  45            | expr Leq expr
+  46            | expr Lneq expr
+  47            | condition Land condition
+  48            | condition Lor condition
+
+  49  args :
+  50       | expr
+  51       | expr Lcomma args
+
+  52  then_ : Lthen
+  53        | eol
+
+  54  if_tail :
+  55          | Lelse expr
+
+  56  atype : Lbyte
+  57        | Ltint
+
+  58  term : Lsemi
+  59       | eol
+
+  60  eol : Leol
+  61      | Lrem Leol
+
+  62  terms : term
+  63        | terms term
+
+  64  opt_terms :
+  65            | terms
+
+  66  %entry% : '\001' program
+
+state 0
+	$accept : . %entry% $end  (0)
+
+	'\001'  shift 1
+	.  error
+
+	%entry%  goto 2
+
+
+state 1
+	%entry% : '\001' . program  (66)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lfor  shift 8
+	Lif  shift 9
+	Lreturn  shift 10
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 13
+	.  error
+
+	program  goto 14
+	stmts  goto 15
+	stmt  goto 16
+	expr  goto 17
+	lvalue  goto 18
+	arith  goto 19
+
+
+state 2
+	$accept : %entry% . $end  (0)
+
+	$end  accept
+
+
+state 3
+	expr : Lpipe . expr Lpipe  (29)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 21
+	arith  goto 19
+
+
+state 4
+	arith : Llparen . arith Lrparen  (42)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 22
+	arith  goto 23
+
+
+state 5
+	expr : Llcurly . opt_terms stmts opt_terms Lrcurly  (25)
+	opt_terms : .  (64)
+
+	Leol  shift 24
+	Lsemi  shift 25
+	Lrem  shift 26
+	Lpipe  reduce 64
+	Llparen  reduce 64
+	Llcurly  reduce 64
+	Lbackslash  reduce 64
+	Ldo  reduce 64
+	Lfor  reduce 64
+	Lif  reduce 64
+	Lreturn  reduce 64
+	Lnew  reduce 64
+	Lint  reduce 64
+	Lident  reduce 64
+
+	opt_terms  goto 27
+	terms  goto 28
+	eol  goto 29
+	term  goto 30
+
+
+state 6
+	expr : Lbackslash . params Lfollow expr  (34)
+
+	Lident  shift 31
+	.  error
+
+	params  goto 32
+
+
+state 7
+	expr : Ldo . opt_terms stmts opt_terms Lend  (24)
+	opt_terms : .  (64)
+
+	Leol  shift 24
+	Lsemi  shift 25
+	Lrem  shift 26
+	Lpipe  reduce 64
+	Llparen  reduce 64
+	Llcurly  reduce 64
+	Lbackslash  reduce 64
+	Ldo  reduce 64
+	Lfor  reduce 64
+	Lif  reduce 64
+	Lreturn  reduce 64
+	Lnew  reduce 64
+	Lint  reduce 64
+	Lident  reduce 64
+
+	opt_terms  goto 33
+	terms  goto 28
+	eol  goto 29
+	term  goto 30
+
+
+state 8
+	stmt : Lfor . name_seq_list opt_terms stmts opt_terms Lend  (6)
+
+	Lident  shift 34
+	.  error
+
+	name_seq_list  goto 35
+	name_seq  goto 36
+
+
+state 9
+	expr : Lif . condition then_ expr if_tail  (23)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 37
+	condition  goto 38
+	arith  goto 19
+
+
+state 10
+	stmt : Lreturn . expr  (7)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 39
+	arith  goto 19
+
+
+state 11
+	expr : Lnew . atype Llbracket expr Lrbracket  (33)
+
+	Lbyte  shift 40
+	Ltint  shift 41
+	.  error
+
+	atype  goto 42
+
+
+state 12
+	expr : Lint .  (21)
+
+	.  reduce 21
+
+
+state 13
+	stmt : Lident . params_opt Leq expr  (4)
+	lvalue : Lident .  (13)
+	lvalue : Lident . Llbracket expr Lrbracket  (14)
+	lvalue : Lident . Llbracket seq Lrbracket  (15)
+	expr : Lident .  (22)
+	expr : Lident . Llparen args Lrparen  (26)
+	expr : Lident . Llbracket expr Lrbracket  (27)
+	expr : Lident . Llbracket seq Lrbracket  (28)
+	params_opt : .  (9)
+
+	Llparen  shift 43
+	Llbracket  shift 44
+	Leol  reduce 22
+	Leof  reduce 22
+	Lsemi  reduce 22
+	Lmod  reduce 22
+	Lplus  reduce 22
+	Lminus  reduce 22
+	Lmul  reduce 22
+	Ldiv  reduce 22
+	Lxor  reduce 22
+	Leq  reduce 9
+	Ldot2  reduce 22
+	Lrcurly  reduce 22
+	Lrem  reduce 22
+	Lwrite  reduce 13
+	Lend  reduce 22
+	Lhead  reduce 22
+	Ltail  reduce 22
+
+	params_opt  goto 45
+
+
+state 14
+	%entry% : '\001' program .  (66)
+
+	.  reduce 66
+
+
+state 15
+	program : stmts . opt_terms Leof  (1)
+	stmts : stmts . terms stmt  (3)
+	opt_terms : .  (64)
+
+	Leol  shift 24
+	Lsemi  shift 25
+	Lrem  shift 26
+	Leof  reduce 64
+
+	opt_terms  goto 46
+	terms  goto 47
+	eol  goto 29
+	term  goto 30
+
+
+state 16
+	stmts : stmt .  (2)
+
+	.  reduce 2
+
+
+state 17
+	stmt : expr .  (8)
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Ldot2  shift 54
+	Lhead  shift 55
+	Ltail  shift 56
+	Leol  reduce 8
+	Leof  reduce 8
+	Lsemi  reduce 8
+	Lrcurly  reduce 8
+	Lrem  reduce 8
+	Lend  reduce 8
+
+
+state 18
+	stmt : lvalue . Lwrite expr  (5)
+
+	Lwrite  shift 57
+	.  error
+
+
+state 19
+	expr : arith .  (32)
+
+	.  reduce 32
+
+
+20: shift/reduce conflict (shift 58, reduce 22) on Llparen
+state 20
+	expr : Lident .  (22)
+	expr : Lident . Llparen args Lrparen  (26)
+	expr : Lident . Llbracket expr Lrbracket  (27)
+	expr : Lident . Llbracket seq Lrbracket  (28)
+
+	Llparen  shift 58
+	Llbracket  shift 59
+	Leol  reduce 22
+	Leof  reduce 22
+	Lpipe  reduce 22
+	Lsemi  reduce 22
+	Lmod  reduce 22
+	Lplus  reduce 22
+	Lminus  reduce 22
+	Lmul  reduce 22
+	Ldiv  reduce 22
+	Lxor  reduce 22
+	Llt  reduce 22
+	Lgt  reduce 22
+	Leq  reduce 22
+	Lneq  reduce 22
+	Lrparen  reduce 22
+	Land  reduce 22
+	Lor  reduce 22
+	Ldot2  reduce 22
+	Lcomma  reduce 22
+	Llcurly  reduce 22
+	Lrcurly  reduce 22
+	Lrem  reduce 22
+	Lbackslash  reduce 22
+	Lrbracket  reduce 22
+	Ldo  reduce 22
+	Lend  reduce 22
+	Lfor  reduce 22
+	Lif  reduce 22
+	Lthen  reduce 22
+	Lelse  reduce 22
+	Lreturn  reduce 22
+	Lhead  reduce 22
+	Ltail  reduce 22
+	Lnew  reduce 22
+	Lint  reduce 22
+	Lident  reduce 22
+
+
+state 21
+	expr : Lpipe expr . Lpipe  (29)
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+
+	Lpipe  shift 60
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Ldot2  shift 54
+	Lhead  shift 55
+	Ltail  shift 56
+	.  error
+
+
+state 22
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Ldot2  shift 54
+	Lhead  shift 55
+	Ltail  shift 56
+	.  error
+
+
+state 23
+	expr : arith .  (32)
+	arith : Llparen arith . Lrparen  (42)
+
+	Lrparen  shift 61
+	Lmod  reduce 32
+	Lplus  reduce 32
+	Lminus  reduce 32
+	Lmul  reduce 32
+	Ldiv  reduce 32
+	Lxor  reduce 32
+	Ldot2  reduce 32
+	Lhead  reduce 32
+	Ltail  reduce 32
+
+
+state 24
+	eol : Leol .  (60)
+
+	.  reduce 60
+
+
+state 25
+	term : Lsemi .  (58)
+
+	.  reduce 58
+
+
+state 26
+	eol : Lrem . Leol  (61)
+
+	Leol  shift 62
+	.  error
+
+
+state 27
+	expr : Llcurly opt_terms . stmts opt_terms Lrcurly  (25)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lfor  shift 8
+	Lif  shift 9
+	Lreturn  shift 10
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 13
+	.  error
+
+	stmts  goto 63
+	stmt  goto 16
+	expr  goto 17
+	lvalue  goto 18
+	arith  goto 19
+
+
+state 28
+	terms : terms . term  (63)
+	opt_terms : terms .  (65)
+
+	Leol  shift 24
+	Lsemi  shift 25
+	Lrem  shift 26
+	Lpipe  reduce 65
+	Llparen  reduce 65
+	Llcurly  reduce 65
+	Lbackslash  reduce 65
+	Ldo  reduce 65
+	Lfor  reduce 65
+	Lif  reduce 65
+	Lreturn  reduce 65
+	Lnew  reduce 65
+	Lint  reduce 65
+	Lident  reduce 65
+
+	eol  goto 29
+	term  goto 64
+
+
+state 29
+	term : eol .  (59)
+
+	.  reduce 59
+
+
+state 30
+	terms : term .  (62)
+
+	.  reduce 62
+
+
+state 31
+	params : Lident .  (11)
+	params : Lident . Lcomma params  (12)
+
+	Lcomma  shift 65
+	Lrparen  reduce 11
+	Lfollow  reduce 11
+
+
+state 32
+	expr : Lbackslash params . Lfollow expr  (34)
+
+	Lfollow  shift 66
+	.  error
+
+
+state 33
+	expr : Ldo opt_terms . stmts opt_terms Lend  (24)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lfor  shift 8
+	Lif  shift 9
+	Lreturn  shift 10
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 13
+	.  error
+
+	stmts  goto 67
+	stmt  goto 16
+	expr  goto 17
+	lvalue  goto 18
+	arith  goto 19
+
+
+state 34
+	name_seq : Lident . Lin seq  (18)
+
+	Lin  shift 68
+	.  error
+
+
+state 35
+	stmt : Lfor name_seq_list . opt_terms stmts opt_terms Lend  (6)
+	name_seq_list : name_seq_list . Lcomma name_seq  (17)
+	opt_terms : .  (64)
+
+	Leol  shift 24
+	Lsemi  shift 25
+	Lcomma  shift 69
+	Lrem  shift 26
+	Lpipe  reduce 64
+	Llparen  reduce 64
+	Llcurly  reduce 64
+	Lbackslash  reduce 64
+	Ldo  reduce 64
+	Lfor  reduce 64
+	Lif  reduce 64
+	Lreturn  reduce 64
+	Lnew  reduce 64
+	Lint  reduce 64
+	Lident  reduce 64
+
+	opt_terms  goto 70
+	terms  goto 28
+	eol  goto 29
+	term  goto 30
+
+
+state 36
+	name_seq_list : name_seq .  (16)
+
+	.  reduce 16
+
+
+state 37
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+	condition : expr . Llt expr  (43)
+	condition : expr . Lgt expr  (44)
+	condition : expr . Leq expr  (45)
+	condition : expr . Lneq expr  (46)
+
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Llt  shift 71
+	Lgt  shift 72
+	Leq  shift 73
+	Lneq  shift 74
+	Ldot2  shift 54
+	Lhead  shift 55
+	Ltail  shift 56
+	.  error
+
+
+state 38
+	expr : Lif condition . then_ expr if_tail  (23)
+	condition : condition . Land condition  (47)
+	condition : condition . Lor condition  (48)
+
+	Leol  shift 24
+	Land  shift 75
+	Lor  shift 76
+	Lrem  shift 26
+	Lthen  shift 77
+	.  error
+
+	then_  goto 78
+	eol  goto 79
+
+
+state 39
+	stmt : Lreturn expr .  (7)
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Ldot2  shift 54
+	Lhead  shift 55
+	Ltail  shift 56
+	Leol  reduce 7
+	Leof  reduce 7
+	Lsemi  reduce 7
+	Lrcurly  reduce 7
+	Lrem  reduce 7
+	Lend  reduce 7
+
+
+state 40
+	atype : Lbyte .  (56)
+
+	.  reduce 56
+
+
+state 41
+	atype : Ltint .  (57)
+
+	.  reduce 57
+
+
+state 42
+	expr : Lnew atype . Llbracket expr Lrbracket  (33)
+
+	Llbracket  shift 80
+	.  error
+
+
+state 43
+	params_opt : Llparen . params Lrparen  (10)
+	expr : Lident Llparen . args Lrparen  (26)
+	args : .  (49)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 81
+	Lrparen  reduce 49
+
+	expr  goto 82
+	params  goto 83
+	args  goto 84
+	arith  goto 19
+
+
+state 44
+	lvalue : Lident Llbracket . expr Lrbracket  (14)
+	lvalue : Lident Llbracket . seq Lrbracket  (15)
+	expr : Lident Llbracket . expr Lrbracket  (27)
+	expr : Lident Llbracket . seq Lrbracket  (28)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 85
+	.  error
+
+	expr  goto 86
+	seq  goto 87
+	arith  goto 19
+
+
+state 45
+	stmt : Lident params_opt . Leq expr  (4)
+
+	Leq  shift 88
+	.  error
+
+
+state 46
+	program : stmts opt_terms . Leof  (1)
+
+	Leof  shift 89
+	.  error
+
+
+state 47
+	stmts : stmts terms . stmt  (3)
+	terms : terms . term  (63)
+	opt_terms : terms .  (65)
+
+	Leol  shift 24
+	Lpipe  shift 3
+	Lsemi  shift 25
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lrem  shift 26
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lfor  shift 8
+	Lif  shift 9
+	Lreturn  shift 10
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 13
+	Leof  reduce 65
+	Lrcurly  reduce 65
+	Lend  reduce 65
+
+	stmt  goto 90
+	expr  goto 17
+	lvalue  goto 18
+	arith  goto 19
+	eol  goto 29
+	term  goto 64
+
+
+state 48
+	arith : expr Lmod . expr  (39)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 91
+	arith  goto 19
+
+
+state 49
+	arith : expr Lplus . expr  (35)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 92
+	arith  goto 19
+
+
+state 50
+	arith : expr Lminus . expr  (36)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 93
+	arith  goto 19
+
+
+state 51
+	arith : expr Lmul . expr  (37)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 94
+	arith  goto 19
+
+
+state 52
+	arith : expr Ldiv . expr  (38)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 95
+	arith  goto 19
+
+
+state 53
+	arith : expr Lxor . expr  (40)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 96
+	arith  goto 19
+
+
+state 54
+	arith : expr Ldot2 . expr  (41)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 97
+	arith  goto 19
+
+
+state 55
+	expr : expr Lhead .  (30)
+
+	.  reduce 30
+
+
+state 56
+	expr : expr Ltail .  (31)
+
+	.  reduce 31
+
+
+state 57
+	stmt : lvalue Lwrite . expr  (5)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 98
+	arith  goto 19
+
+
+state 58
+	expr : Lident Llparen . args Lrparen  (26)
+	args : .  (49)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	Lrparen  reduce 49
+
+	expr  goto 82
+	args  goto 84
+	arith  goto 19
+
+
+state 59
+	expr : Lident Llbracket . expr Lrbracket  (27)
+	expr : Lident Llbracket . seq Lrbracket  (28)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 85
+	.  error
+
+	expr  goto 99
+	seq  goto 100
+	arith  goto 19
+
+
+state 60
+	expr : Lpipe expr Lpipe .  (29)
+
+	.  reduce 29
+
+
+state 61
+	arith : Llparen arith Lrparen .  (42)
+
+	.  reduce 42
+
+
+state 62
+	eol : Lrem Leol .  (61)
+
+	.  reduce 61
+
+
+state 63
+	stmts : stmts . terms stmt  (3)
+	expr : Llcurly opt_terms stmts . opt_terms Lrcurly  (25)
+	opt_terms : .  (64)
+
+	Leol  shift 24
+	Lsemi  shift 25
+	Lrem  shift 26
+	Lrcurly  reduce 64
+
+	opt_terms  goto 101
+	terms  goto 47
+	eol  goto 29
+	term  goto 30
+
+
+state 64
+	terms : terms term .  (63)
+
+	.  reduce 63
+
+
+state 65
+	params : Lident Lcomma . params  (12)
+
+	Lident  shift 31
+	.  error
+
+	params  goto 102
+
+
+state 66
+	expr : Lbackslash params Lfollow . expr  (34)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 103
+	arith  goto 19
+
+
+state 67
+	stmts : stmts . terms stmt  (3)
+	expr : Ldo opt_terms stmts . opt_terms Lend  (24)
+	opt_terms : .  (64)
+
+	Leol  shift 24
+	Lsemi  shift 25
+	Lrem  shift 26
+	Lend  reduce 64
+
+	opt_terms  goto 104
+	terms  goto 47
+	eol  goto 29
+	term  goto 30
+
+
+state 68
+	name_seq : Lident Lin . seq  (18)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 85
+	.  error
+
+	expr  goto 105
+	seq  goto 106
+	arith  goto 19
+
+
+state 69
+	name_seq_list : name_seq_list Lcomma . name_seq  (17)
+
+	Lident  shift 34
+	.  error
+
+	name_seq  goto 107
+
+
+state 70
+	stmt : Lfor name_seq_list opt_terms . stmts opt_terms Lend  (6)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lfor  shift 8
+	Lif  shift 9
+	Lreturn  shift 10
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 13
+	.  error
+
+	stmts  goto 108
+	stmt  goto 16
+	expr  goto 17
+	lvalue  goto 18
+	arith  goto 19
+
+
+state 71
+	condition : expr Llt . expr  (43)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 109
+	arith  goto 19
+
+
+state 72
+	condition : expr Lgt . expr  (44)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 110
+	arith  goto 19
+
+
+state 73
+	condition : expr Leq . expr  (45)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 111
+	arith  goto 19
+
+
+state 74
+	condition : expr Lneq . expr  (46)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 112
+	arith  goto 19
+
+
+state 75
+	condition : condition Land . condition  (47)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 37
+	condition  goto 113
+	arith  goto 19
+
+
+state 76
+	condition : condition Lor . condition  (48)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 37
+	condition  goto 114
+	arith  goto 19
+
+
+state 77
+	then_ : Lthen .  (52)
+
+	.  reduce 52
+
+
+state 78
+	expr : Lif condition then_ . expr if_tail  (23)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 115
+	arith  goto 19
+
+
+state 79
+	then_ : eol .  (53)
+
+	.  reduce 53
+
+
+state 80
+	expr : Lnew atype Llbracket . expr Lrbracket  (33)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 116
+	arith  goto 19
+
+
+81: reduce/reduce conflict (reduce 11, reduce 22) on Lrparen
+81: shift/reduce conflict (shift 65, reduce 22) on Lcomma
+state 81
+	params : Lident .  (11)
+	params : Lident . Lcomma params  (12)
+	expr : Lident .  (22)
+	expr : Lident . Llparen args Lrparen  (26)
+	expr : Lident . Llbracket expr Lrbracket  (27)
+	expr : Lident . Llbracket seq Lrbracket  (28)
+
+	Llparen  shift 58
+	Lcomma  shift 65
+	Llbracket  shift 59
+	Lmod  reduce 22
+	Lplus  reduce 22
+	Lminus  reduce 22
+	Lmul  reduce 22
+	Ldiv  reduce 22
+	Lxor  reduce 22
+	Lrparen  reduce 11
+	Ldot2  reduce 22
+	Lhead  reduce 22
+	Ltail  reduce 22
+
+
+state 82
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+	args : expr .  (50)
+	args : expr . Lcomma args  (51)
+
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Ldot2  shift 54
+	Lcomma  shift 117
+	Lhead  shift 55
+	Ltail  shift 56
+	Lrparen  reduce 50
+
+
+state 83
+	params_opt : Llparen params . Lrparen  (10)
+
+	Lrparen  shift 118
+	.  error
+
+
+state 84
+	expr : Lident Llparen args . Lrparen  (26)
+
+	Lrparen  shift 119
+	.  error
+
+
+85: shift/reduce conflict (shift 58, reduce 19) on Llparen
+85: reduce/reduce conflict (reduce 19, reduce 22) on Lrbracket
+state 85
+	seq : Lident .  (19)
+	expr : Lident .  (22)
+	expr : Lident . Llparen args Lrparen  (26)
+	expr : Lident . Llbracket expr Lrbracket  (27)
+	expr : Lident . Llbracket seq Lrbracket  (28)
+
+	Llparen  shift 58
+	Llbracket  shift 59
+	Leol  reduce 19
+	Lpipe  reduce 19
+	Lsemi  reduce 19
+	Lmod  reduce 22
+	Lplus  reduce 22
+	Lminus  reduce 22
+	Lmul  reduce 22
+	Ldiv  reduce 22
+	Lxor  reduce 22
+	Ldot2  reduce 22
+	Lcomma  reduce 19
+	Llcurly  reduce 19
+	Lrem  reduce 19
+	Lbackslash  reduce 19
+	Lrbracket  reduce 19
+	Ldo  reduce 19
+	Lfor  reduce 19
+	Lif  reduce 19
+	Lreturn  reduce 19
+	Lhead  reduce 22
+	Ltail  reduce 22
+	Lnew  reduce 19
+	Lint  reduce 19
+	Lident  reduce 19
+
+
+state 86
+	lvalue : Lident Llbracket expr . Lrbracket  (14)
+	seq : expr . Ldot2 expr  (20)
+	expr : Lident Llbracket expr . Lrbracket  (27)
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Ldot2  shift 120
+	Lrbracket  shift 121
+	Lhead  shift 55
+	Ltail  shift 56
+	.  error
+
+
+state 87
+	lvalue : Lident Llbracket seq . Lrbracket  (15)
+	expr : Lident Llbracket seq . Lrbracket  (28)
+
+	Lrbracket  shift 122
+	.  error
+
+
+state 88
+	stmt : Lident params_opt Leq . expr  (4)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 123
+	arith  goto 19
+
+
+state 89
+	program : stmts opt_terms Leof .  (1)
+
+	.  reduce 1
+
+
+state 90
+	stmts : stmts terms stmt .  (3)
+
+	.  reduce 3
+
+
+91: shift/reduce conflict (shift 53, reduce 39) on Lxor
+91: shift/reduce conflict (shift 55, reduce 39) on Lhead
+91: shift/reduce conflict (shift 56, reduce 39) on Ltail
+state 91
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr Lmod expr .  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+
+	Lxor  shift 53
+	Lhead  shift 55
+	Ltail  shift 56
+	Leol  reduce 39
+	Leof  reduce 39
+	Lpipe  reduce 39
+	Lsemi  reduce 39
+	Lmod  reduce 39
+	Lplus  reduce 39
+	Lminus  reduce 39
+	Lmul  reduce 39
+	Ldiv  reduce 39
+	Llt  reduce 39
+	Lgt  reduce 39
+	Leq  reduce 39
+	Lneq  reduce 39
+	Llparen  reduce 39
+	Lrparen  reduce 39
+	Land  reduce 39
+	Lor  reduce 39
+	Ldot2  reduce 39
+	Lcomma  reduce 39
+	Llcurly  reduce 39
+	Lrcurly  reduce 39
+	Lrem  reduce 39
+	Lbackslash  reduce 39
+	Lrbracket  reduce 39
+	Ldo  reduce 39
+	Lend  reduce 39
+	Lfor  reduce 39
+	Lif  reduce 39
+	Lthen  reduce 39
+	Lelse  reduce 39
+	Lreturn  reduce 39
+	Lnew  reduce 39
+	Lint  reduce 39
+	Lident  reduce 39
+
+
+92: shift/reduce conflict (shift 53, reduce 35) on Lxor
+92: shift/reduce conflict (shift 55, reduce 35) on Lhead
+92: shift/reduce conflict (shift 56, reduce 35) on Ltail
+state 92
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr Lplus expr .  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+
+	Lmod  shift 48
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Lhead  shift 55
+	Ltail  shift 56
+	Leol  reduce 35
+	Leof  reduce 35
+	Lpipe  reduce 35
+	Lsemi  reduce 35
+	Lplus  reduce 35
+	Lminus  reduce 35
+	Llt  reduce 35
+	Lgt  reduce 35
+	Leq  reduce 35
+	Lneq  reduce 35
+	Llparen  reduce 35
+	Lrparen  reduce 35
+	Land  reduce 35
+	Lor  reduce 35
+	Ldot2  reduce 35
+	Lcomma  reduce 35
+	Llcurly  reduce 35
+	Lrcurly  reduce 35
+	Lrem  reduce 35
+	Lbackslash  reduce 35
+	Lrbracket  reduce 35
+	Ldo  reduce 35
+	Lend  reduce 35
+	Lfor  reduce 35
+	Lif  reduce 35
+	Lthen  reduce 35
+	Lelse  reduce 35
+	Lreturn  reduce 35
+	Lnew  reduce 35
+	Lint  reduce 35
+	Lident  reduce 35
+
+
+93: shift/reduce conflict (shift 53, reduce 36) on Lxor
+93: shift/reduce conflict (shift 55, reduce 36) on Lhead
+93: shift/reduce conflict (shift 56, reduce 36) on Ltail
+state 93
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr Lminus expr .  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+
+	Lmod  shift 48
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Lhead  shift 55
+	Ltail  shift 56
+	Leol  reduce 36
+	Leof  reduce 36
+	Lpipe  reduce 36
+	Lsemi  reduce 36
+	Lplus  reduce 36
+	Lminus  reduce 36
+	Llt  reduce 36
+	Lgt  reduce 36
+	Leq  reduce 36
+	Lneq  reduce 36
+	Llparen  reduce 36
+	Lrparen  reduce 36
+	Land  reduce 36
+	Lor  reduce 36
+	Ldot2  reduce 36
+	Lcomma  reduce 36
+	Llcurly  reduce 36
+	Lrcurly  reduce 36
+	Lrem  reduce 36
+	Lbackslash  reduce 36
+	Lrbracket  reduce 36
+	Ldo  reduce 36
+	Lend  reduce 36
+	Lfor  reduce 36
+	Lif  reduce 36
+	Lthen  reduce 36
+	Lelse  reduce 36
+	Lreturn  reduce 36
+	Lnew  reduce 36
+	Lint  reduce 36
+	Lident  reduce 36
+
+
+94: shift/reduce conflict (shift 53, reduce 37) on Lxor
+94: shift/reduce conflict (shift 55, reduce 37) on Lhead
+94: shift/reduce conflict (shift 56, reduce 37) on Ltail
+state 94
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr Lmul expr .  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+
+	Lxor  shift 53
+	Lhead  shift 55
+	Ltail  shift 56
+	Leol  reduce 37
+	Leof  reduce 37
+	Lpipe  reduce 37
+	Lsemi  reduce 37
+	Lmod  reduce 37
+	Lplus  reduce 37
+	Lminus  reduce 37
+	Lmul  reduce 37
+	Ldiv  reduce 37
+	Llt  reduce 37
+	Lgt  reduce 37
+	Leq  reduce 37
+	Lneq  reduce 37
+	Llparen  reduce 37
+	Lrparen  reduce 37
+	Land  reduce 37
+	Lor  reduce 37
+	Ldot2  reduce 37
+	Lcomma  reduce 37
+	Llcurly  reduce 37
+	Lrcurly  reduce 37
+	Lrem  reduce 37
+	Lbackslash  reduce 37
+	Lrbracket  reduce 37
+	Ldo  reduce 37
+	Lend  reduce 37
+	Lfor  reduce 37
+	Lif  reduce 37
+	Lthen  reduce 37
+	Lelse  reduce 37
+	Lreturn  reduce 37
+	Lnew  reduce 37
+	Lint  reduce 37
+	Lident  reduce 37
+
+
+95: shift/reduce conflict (shift 53, reduce 38) on Lxor
+95: shift/reduce conflict (shift 55, reduce 38) on Lhead
+95: shift/reduce conflict (shift 56, reduce 38) on Ltail
+state 95
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr Ldiv expr .  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+
+	Lxor  shift 53
+	Lhead  shift 55
+	Ltail  shift 56
+	Leol  reduce 38
+	Leof  reduce 38
+	Lpipe  reduce 38
+	Lsemi  reduce 38
+	Lmod  reduce 38
+	Lplus  reduce 38
+	Lminus  reduce 38
+	Lmul  reduce 38
+	Ldiv  reduce 38
+	Llt  reduce 38
+	Lgt  reduce 38
+	Leq  reduce 38
+	Lneq  reduce 38
+	Llparen  reduce 38
+	Lrparen  reduce 38
+	Land  reduce 38
+	Lor  reduce 38
+	Ldot2  reduce 38
+	Lcomma  reduce 38
+	Llcurly  reduce 38
+	Lrcurly  reduce 38
+	Lrem  reduce 38
+	Lbackslash  reduce 38
+	Lrbracket  reduce 38
+	Ldo  reduce 38
+	Lend  reduce 38
+	Lfor  reduce 38
+	Lif  reduce 38
+	Lthen  reduce 38
+	Lelse  reduce 38
+	Lreturn  reduce 38
+	Lnew  reduce 38
+	Lint  reduce 38
+	Lident  reduce 38
+
+
+96: shift/reduce conflict (shift 48, reduce 40) on Lmod
+96: shift/reduce conflict (shift 49, reduce 40) on Lplus
+96: shift/reduce conflict (shift 50, reduce 40) on Lminus
+96: shift/reduce conflict (shift 51, reduce 40) on Lmul
+96: shift/reduce conflict (shift 52, reduce 40) on Ldiv
+96: shift/reduce conflict (shift 53, reduce 40) on Lxor
+96: shift/reduce conflict (shift 54, reduce 40) on Ldot2
+96: shift/reduce conflict (shift 55, reduce 40) on Lhead
+96: shift/reduce conflict (shift 56, reduce 40) on Ltail
+state 96
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr Lxor expr .  (40)
+	arith : expr . Ldot2 expr  (41)
+
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Ldot2  shift 54
+	Lhead  shift 55
+	Ltail  shift 56
+	Leol  reduce 40
+	Leof  reduce 40
+	Lpipe  reduce 40
+	Lsemi  reduce 40
+	Llt  reduce 40
+	Lgt  reduce 40
+	Leq  reduce 40
+	Lneq  reduce 40
+	Llparen  reduce 40
+	Lrparen  reduce 40
+	Land  reduce 40
+	Lor  reduce 40
+	Lcomma  reduce 40
+	Llcurly  reduce 40
+	Lrcurly  reduce 40
+	Lrem  reduce 40
+	Lbackslash  reduce 40
+	Lrbracket  reduce 40
+	Ldo  reduce 40
+	Lend  reduce 40
+	Lfor  reduce 40
+	Lif  reduce 40
+	Lthen  reduce 40
+	Lelse  reduce 40
+	Lreturn  reduce 40
+	Lnew  reduce 40
+	Lint  reduce 40
+	Lident  reduce 40
+
+
+97: shift/reduce conflict (shift 53, reduce 41) on Lxor
+97: shift/reduce conflict (shift 55, reduce 41) on Lhead
+97: shift/reduce conflict (shift 56, reduce 41) on Ltail
+state 97
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+	arith : expr Ldot2 expr .  (41)
+
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Lhead  shift 55
+	Ltail  shift 56
+	Leol  reduce 41
+	Leof  reduce 41
+	Lpipe  reduce 41
+	Lsemi  reduce 41
+	Llt  reduce 41
+	Lgt  reduce 41
+	Leq  reduce 41
+	Lneq  reduce 41
+	Llparen  reduce 41
+	Lrparen  reduce 41
+	Land  reduce 41
+	Lor  reduce 41
+	Lcomma  reduce 41
+	Llcurly  reduce 41
+	Lrcurly  reduce 41
+	Lrem  reduce 41
+	Lbackslash  reduce 41
+	Lrbracket  reduce 41
+	Ldo  reduce 41
+	Lend  reduce 41
+	Lfor  reduce 41
+	Lif  reduce 41
+	Lthen  reduce 41
+	Lelse  reduce 41
+	Lreturn  reduce 41
+	Lnew  reduce 41
+	Lint  reduce 41
+	Lident  reduce 41
+
+
+state 98
+	stmt : lvalue Lwrite expr .  (5)
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Ldot2  shift 54
+	Lhead  shift 55
+	Ltail  shift 56
+	Leol  reduce 5
+	Leof  reduce 5
+	Lsemi  reduce 5
+	Lrcurly  reduce 5
+	Lrem  reduce 5
+	Lend  reduce 5
+
+
+state 99
+	seq : expr . Ldot2 expr  (20)
+	expr : Lident Llbracket expr . Lrbracket  (27)
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Ldot2  shift 120
+	Lrbracket  shift 124
+	Lhead  shift 55
+	Ltail  shift 56
+	.  error
+
+
+state 100
+	expr : Lident Llbracket seq . Lrbracket  (28)
+
+	Lrbracket  shift 125
+	.  error
+
+
+state 101
+	expr : Llcurly opt_terms stmts opt_terms . Lrcurly  (25)
+
+	Lrcurly  shift 126
+	.  error
+
+
+state 102
+	params : Lident Lcomma params .  (12)
+
+	.  reduce 12
+
+
+103: shift/reduce conflict (shift 48, reduce 34) on Lmod
+103: shift/reduce conflict (shift 49, reduce 34) on Lplus
+103: shift/reduce conflict (shift 50, reduce 34) on Lminus
+103: shift/reduce conflict (shift 51, reduce 34) on Lmul
+103: shift/reduce conflict (shift 52, reduce 34) on Ldiv
+103: shift/reduce conflict (shift 53, reduce 34) on Lxor
+103: shift/reduce conflict (shift 54, reduce 34) on Ldot2
+103: shift/reduce conflict (shift 55, reduce 34) on Lhead
+103: shift/reduce conflict (shift 56, reduce 34) on Ltail
+state 103
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	expr : Lbackslash params Lfollow expr .  (34)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Ldot2  shift 54
+	Lhead  shift 55
+	Ltail  shift 56
+	Leol  reduce 34
+	Leof  reduce 34
+	Lpipe  reduce 34
+	Lsemi  reduce 34
+	Llt  reduce 34
+	Lgt  reduce 34
+	Leq  reduce 34
+	Lneq  reduce 34
+	Llparen  reduce 34
+	Lrparen  reduce 34
+	Land  reduce 34
+	Lor  reduce 34
+	Lcomma  reduce 34
+	Llcurly  reduce 34
+	Lrcurly  reduce 34
+	Lrem  reduce 34
+	Lbackslash  reduce 34
+	Lrbracket  reduce 34
+	Ldo  reduce 34
+	Lend  reduce 34
+	Lfor  reduce 34
+	Lif  reduce 34
+	Lthen  reduce 34
+	Lelse  reduce 34
+	Lreturn  reduce 34
+	Lnew  reduce 34
+	Lint  reduce 34
+	Lident  reduce 34
+
+
+state 104
+	expr : Ldo opt_terms stmts opt_terms . Lend  (24)
+
+	Lend  shift 127
+	.  error
+
+
+state 105
+	seq : expr . Ldot2 expr  (20)
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Ldot2  shift 120
+	Lhead  shift 55
+	Ltail  shift 56
+	.  error
+
+
+state 106
+	name_seq : Lident Lin seq .  (18)
+
+	.  reduce 18
+
+
+state 107
+	name_seq_list : name_seq_list Lcomma name_seq .  (17)
+
+	.  reduce 17
+
+
+state 108
+	stmts : stmts . terms stmt  (3)
+	stmt : Lfor name_seq_list opt_terms stmts . opt_terms Lend  (6)
+	opt_terms : .  (64)
+
+	Leol  shift 24
+	Lsemi  shift 25
+	Lrem  shift 26
+	Lend  reduce 64
+
+	opt_terms  goto 128
+	terms  goto 47
+	eol  goto 29
+	term  goto 30
+
+
+state 109
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+	condition : expr Llt expr .  (43)
+
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Ldot2  shift 54
+	Lhead  shift 55
+	Ltail  shift 56
+	Leol  reduce 43
+	Land  reduce 43
+	Lor  reduce 43
+	Lrem  reduce 43
+	Lthen  reduce 43
+
+
+state 110
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+	condition : expr Lgt expr .  (44)
+
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Ldot2  shift 54
+	Lhead  shift 55
+	Ltail  shift 56
+	Leol  reduce 44
+	Land  reduce 44
+	Lor  reduce 44
+	Lrem  reduce 44
+	Lthen  reduce 44
+
+
+state 111
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+	condition : expr Leq expr .  (45)
+
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Ldot2  shift 54
+	Lhead  shift 55
+	Ltail  shift 56
+	Leol  reduce 45
+	Land  reduce 45
+	Lor  reduce 45
+	Lrem  reduce 45
+	Lthen  reduce 45
+
+
+state 112
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+	condition : expr Lneq expr .  (46)
+
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Ldot2  shift 54
+	Lhead  shift 55
+	Ltail  shift 56
+	Leol  reduce 46
+	Land  reduce 46
+	Lor  reduce 46
+	Lrem  reduce 46
+	Lthen  reduce 46
+
+
+state 113
+	condition : condition . Land condition  (47)
+	condition : condition Land condition .  (47)
+	condition : condition . Lor condition  (48)
+
+	.  reduce 47
+
+
+state 114
+	condition : condition . Land condition  (47)
+	condition : condition . Lor condition  (48)
+	condition : condition Lor condition .  (48)
+
+	Land  shift 75
+	Leol  reduce 48
+	Lor  reduce 48
+	Lrem  reduce 48
+	Lthen  reduce 48
+
+
+115: shift/reduce conflict (shift 48, reduce 54) on Lmod
+115: shift/reduce conflict (shift 49, reduce 54) on Lplus
+115: shift/reduce conflict (shift 50, reduce 54) on Lminus
+115: shift/reduce conflict (shift 51, reduce 54) on Lmul
+115: shift/reduce conflict (shift 52, reduce 54) on Ldiv
+115: shift/reduce conflict (shift 53, reduce 54) on Lxor
+115: shift/reduce conflict (shift 54, reduce 54) on Ldot2
+115: shift/reduce conflict (shift 129, reduce 54) on Lelse
+115: shift/reduce conflict (shift 55, reduce 54) on Lhead
+115: shift/reduce conflict (shift 56, reduce 54) on Ltail
+state 115
+	expr : Lif condition then_ expr . if_tail  (23)
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+	if_tail : .  (54)
+
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Ldot2  shift 54
+	Lelse  shift 129
+	Lhead  shift 55
+	Ltail  shift 56
+	Leol  reduce 54
+	Leof  reduce 54
+	Lpipe  reduce 54
+	Lsemi  reduce 54
+	Llt  reduce 54
+	Lgt  reduce 54
+	Leq  reduce 54
+	Lneq  reduce 54
+	Llparen  reduce 54
+	Lrparen  reduce 54
+	Land  reduce 54
+	Lor  reduce 54
+	Lcomma  reduce 54
+	Llcurly  reduce 54
+	Lrcurly  reduce 54
+	Lrem  reduce 54
+	Lbackslash  reduce 54
+	Lrbracket  reduce 54
+	Ldo  reduce 54
+	Lend  reduce 54
+	Lfor  reduce 54
+	Lif  reduce 54
+	Lthen  reduce 54
+	Lreturn  reduce 54
+	Lnew  reduce 54
+	Lint  reduce 54
+	Lident  reduce 54
+
+	if_tail  goto 130
+
+
+state 116
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	expr : Lnew atype Llbracket expr . Lrbracket  (33)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Ldot2  shift 54
+	Lrbracket  shift 131
+	Lhead  shift 55
+	Ltail  shift 56
+	.  error
+
+
+state 117
+	args : expr Lcomma . args  (51)
+	args : .  (49)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	Lrparen  reduce 49
+
+	expr  goto 82
+	args  goto 132
+	arith  goto 19
+
+
+state 118
+	params_opt : Llparen params Lrparen .  (10)
+
+	.  reduce 10
+
+
+state 119
+	expr : Lident Llparen args Lrparen .  (26)
+
+	.  reduce 26
+
+
+state 120
+	seq : expr Ldot2 . expr  (20)
+	arith : expr Ldot2 . expr  (41)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 133
+	arith  goto 19
+
+
+state 121
+	lvalue : Lident Llbracket expr Lrbracket .  (14)
+	expr : Lident Llbracket expr Lrbracket .  (27)
+
+	Leol  reduce 27
+	Leof  reduce 27
+	Lsemi  reduce 27
+	Lmod  reduce 27
+	Lplus  reduce 27
+	Lminus  reduce 27
+	Lmul  reduce 27
+	Ldiv  reduce 27
+	Lxor  reduce 27
+	Ldot2  reduce 27
+	Lrcurly  reduce 27
+	Lrem  reduce 27
+	Lwrite  reduce 14
+	Lend  reduce 27
+	Lhead  reduce 27
+	Ltail  reduce 27
+
+
+state 122
+	lvalue : Lident Llbracket seq Lrbracket .  (15)
+	expr : Lident Llbracket seq Lrbracket .  (28)
+
+	Leol  reduce 28
+	Leof  reduce 28
+	Lsemi  reduce 28
+	Lmod  reduce 28
+	Lplus  reduce 28
+	Lminus  reduce 28
+	Lmul  reduce 28
+	Ldiv  reduce 28
+	Lxor  reduce 28
+	Ldot2  reduce 28
+	Lrcurly  reduce 28
+	Lrem  reduce 28
+	Lwrite  reduce 15
+	Lend  reduce 28
+	Lhead  reduce 28
+	Ltail  reduce 28
+
+
+state 123
+	stmt : Lident params_opt Leq expr .  (4)
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Ldot2  shift 54
+	Lhead  shift 55
+	Ltail  shift 56
+	Leol  reduce 4
+	Leof  reduce 4
+	Lsemi  reduce 4
+	Lrcurly  reduce 4
+	Lrem  reduce 4
+	Lend  reduce 4
+
+
+state 124
+	expr : Lident Llbracket expr Lrbracket .  (27)
+
+	.  reduce 27
+
+
+state 125
+	expr : Lident Llbracket seq Lrbracket .  (28)
+
+	.  reduce 28
+
+
+state 126
+	expr : Llcurly opt_terms stmts opt_terms Lrcurly .  (25)
+
+	.  reduce 25
+
+
+state 127
+	expr : Ldo opt_terms stmts opt_terms Lend .  (24)
+
+	.  reduce 24
+
+
+state 128
+	stmt : Lfor name_seq_list opt_terms stmts opt_terms . Lend  (6)
+
+	Lend  shift 134
+	.  error
+
+
+state 129
+	if_tail : Lelse . expr  (55)
+
+	Lpipe  shift 3
+	Llparen  shift 4
+	Llcurly  shift 5
+	Lbackslash  shift 6
+	Ldo  shift 7
+	Lif  shift 9
+	Lnew  shift 11
+	Lint  shift 12
+	Lident  shift 20
+	.  error
+
+	expr  goto 135
+	arith  goto 19
+
+
+state 130
+	expr : Lif condition then_ expr if_tail .  (23)
+
+	.  reduce 23
+
+
+state 131
+	expr : Lnew atype Llbracket expr Lrbracket .  (33)
+
+	.  reduce 33
+
+
+state 132
+	args : expr Lcomma args .  (51)
+
+	.  reduce 51
+
+
+133: shift/reduce conflict (shift 53, reduce 41) on Lxor
+133: reduce/reduce conflict (reduce 20, reduce 41) on Lrbracket
+133: shift/reduce conflict (shift 55, reduce 41) on Lhead
+133: shift/reduce conflict (shift 56, reduce 41) on Ltail
+state 133
+	seq : expr Ldot2 expr .  (20)
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+	arith : expr Ldot2 expr .  (41)
+
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Lhead  shift 55
+	Ltail  shift 56
+	Leol  reduce 20
+	Lpipe  reduce 20
+	Lsemi  reduce 20
+	Llparen  reduce 20
+	Lcomma  reduce 20
+	Llcurly  reduce 20
+	Lrem  reduce 20
+	Lbackslash  reduce 20
+	Lrbracket  reduce 20
+	Ldo  reduce 20
+	Lfor  reduce 20
+	Lif  reduce 20
+	Lreturn  reduce 20
+	Lnew  reduce 20
+	Lint  reduce 20
+	Lident  reduce 20
+
+
+state 134
+	stmt : Lfor name_seq_list opt_terms stmts opt_terms Lend .  (6)
+
+	.  reduce 6
+
+
+135: shift/reduce conflict (shift 48, reduce 55) on Lmod
+135: shift/reduce conflict (shift 49, reduce 55) on Lplus
+135: shift/reduce conflict (shift 50, reduce 55) on Lminus
+135: shift/reduce conflict (shift 51, reduce 55) on Lmul
+135: shift/reduce conflict (shift 52, reduce 55) on Ldiv
+135: shift/reduce conflict (shift 53, reduce 55) on Lxor
+135: shift/reduce conflict (shift 54, reduce 55) on Ldot2
+135: shift/reduce conflict (shift 55, reduce 55) on Lhead
+135: shift/reduce conflict (shift 56, reduce 55) on Ltail
+state 135
+	expr : expr . Lhead  (30)
+	expr : expr . Ltail  (31)
+	arith : expr . Lplus expr  (35)
+	arith : expr . Lminus expr  (36)
+	arith : expr . Lmul expr  (37)
+	arith : expr . Ldiv expr  (38)
+	arith : expr . Lmod expr  (39)
+	arith : expr . Lxor expr  (40)
+	arith : expr . Ldot2 expr  (41)
+	if_tail : Lelse expr .  (55)
+
+	Lmod  shift 48
+	Lplus  shift 49
+	Lminus  shift 50
+	Lmul  shift 51
+	Ldiv  shift 52
+	Lxor  shift 53
+	Ldot2  shift 54
+	Lhead  shift 55
+	Ltail  shift 56
+	Leol  reduce 55
+	Leof  reduce 55
+	Lpipe  reduce 55
+	Lsemi  reduce 55
+	Llt  reduce 55
+	Lgt  reduce 55
+	Leq  reduce 55
+	Lneq  reduce 55
+	Llparen  reduce 55
+	Lrparen  reduce 55
+	Land  reduce 55
+	Lor  reduce 55
+	Lcomma  reduce 55
+	Llcurly  reduce 55
+	Lrcurly  reduce 55
+	Lrem  reduce 55
+	Lbackslash  reduce 55
+	Lrbracket  reduce 55
+	Ldo  reduce 55
+	Lend  reduce 55
+	Lfor  reduce 55
+	Lif  reduce 55
+	Lthen  reduce 55
+	Lelse  reduce 55
+	Lreturn  reduce 55
+	Lnew  reduce 55
+	Lint  reduce 55
+	Lident  reduce 55
+
+
+State 20 contains 1 shift/reduce conflict.
+State 81 contains 1 shift/reduce conflict, 1 reduce/reduce conflict.
+State 85 contains 1 shift/reduce conflict, 1 reduce/reduce conflict.
+State 91 contains 3 shift/reduce conflicts.
+State 92 contains 3 shift/reduce conflicts.
+State 93 contains 3 shift/reduce conflicts.
+State 94 contains 3 shift/reduce conflicts.
+State 95 contains 3 shift/reduce conflicts.
+State 96 contains 9 shift/reduce conflicts.
+State 97 contains 3 shift/reduce conflicts.
+State 103 contains 9 shift/reduce conflicts.
+State 115 contains 10 shift/reduce conflicts.
+State 133 contains 3 shift/reduce conflicts, 1 reduce/reduce conflict.
+State 135 contains 9 shift/reduce conflicts.
+
+
+51 terminals, 22 nonterminals
+67 grammar rules, 136 states

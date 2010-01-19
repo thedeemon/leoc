@@ -1,0 +1,73 @@
+p(x) =  print(x)
+iter(f, xs) =  for x in xs
+  f(x)
+ end
+m = new int[100]
+iter(p, m)
+iter((x) =>  print(x), 1..10)
+
+
+m = new int[100]
+   for x in m
+            print(x)
+  end
+   for x in 1..10
+            print(x)
+  end
+
+
+# m : int array
+# x : int
+# x : int
+var array_5
+array_5 <- new [(100 * 4)]
+var m
+m <- array_5
+{
+ var x_6
+ var x_end6
+ x_6 <- m
+ x_end6 <- (m + (100 * 4))
+ while x_6 < x_end6 {
+  print(*x_6)
+  x_6 <- (x_6 + 4)
+ }
+}
+{
+ var x_7
+ var x_end7
+ x_7 <- 1
+ x_end7 <- (10 + 1)
+ while x_7 < x_end7 {
+  print(x_7)
+  x_7 <- (x_7 + 1)
+ }
+}
+
+
+MUL|RVV, 1, 100, 4,
+NEW|RRR, 0, 1,
+MOV|RRR, 1, 0,
+MOV|RRR, 2, 1,
+MUL|RVV, 4, 100, 4,
+ADD|RRR, 3, 1, 4,
+//21, while_8:
+JMPLE|RRR, 27, 2, 3, //then_10
+JMP, 36, //endif_10
+//27, then_10:
+PRINT|RPR, 0, 2,
+ADD|RRV, 2, 2, 4,
+JMP, 21, //while_8
+//36, endif_10:
+//36, endloop_9:
+MOV|RVR, 2, 1,
+ADD|RVV, 3, 10, 1,
+//43, while_11:
+JMPLE|RRR, 49, 2, 3, //then_13
+JMP, 58, //endif_13
+//49, then_13:
+PRINT|RRR, 0, 2,
+ADD|RRV, 2, 2, 1,
+JMP, 43, //while_11
+//58, endif_13:
+//58, endloop_12:
