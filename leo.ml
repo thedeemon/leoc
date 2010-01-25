@@ -3,6 +3,7 @@ open Commons
 
 type name = string
 type array_type = AInt | AByte
+type num = NVal of int | NVar of name
 type code = statement list 
 and statement = 
 	| Def of name * name list * expr
@@ -11,14 +12,13 @@ and statement =
 	| Expr of expr
 	| For of (name * seq) list * code
 	| Ret of expr
+	| Typedef of name * (name * field_type) list
 
 and expr =
 	| Val of int
-	| Var of name
+	| LV of lvalue
 	| Arith of oper * expr * expr
 	| Call of name * expr list
-	| Arr of name * expr
-	| SubArr of name * seq
 	| Seq of seq
 	| Length of expr
 	| Head of expr
@@ -29,9 +29,9 @@ and expr =
 	| Comp of code 
 
 and lvalue = 
-	| LVar of name
-	| LArr of name * expr
-	| LSubArr of name * seq
+	| Var of name
+	| ArrElt of name * expr
+	| SubArr of name * seq
 
 and seq = 
 	| SRange of expr * expr
@@ -42,14 +42,16 @@ and condition =
 	| Eq of expr * expr
 	| And of condition * condition
 	| Or of condition * condition
-	| Not of condition;;
+	| Not of condition
+
+and field_type = FInt | FArray of array_type * num | FStruct of name;;
 
 (************************** pretty printing ********************************)
 
 let show_args lst = 
 	if lst = [] then "" else Printf.sprintf "(%s)" (String.concat ", " lst);;
 
-let show_type = function AInt -> "int" | AByte -> "byte";;
+let show_atype = function AInt -> "int" | AByte -> "byte";;
 
 let rec show_code n code =
 	code |> List.map (show_stmt n >> tab n) |> String.concat "\n"
@@ -63,19 +65,21 @@ and show_stmt n = function
 			Printf.sprintf "for %s\n%s\n%send" (List.map (fun (nm,sq) -> Printf.sprintf "%s in %s" nm (show_seq sq)) name_seq_list |> String.concat ", ") 
 																	(show_code (n+1) code) (tab n "") 
 	| Ret e -> "return " ^ (show_expr n e)
+	| Typedef(name, fields) ->
+			let show_field (nm, ft) = Printf.sprintf "%s : %s;\n" nm (show_ftype ft) |> tab (n+1) in
+			let delim = tab n "" in			 
+			Printf.sprintf "type %s = {\n%s%s" name (List.map show_field fields |> String.concat delim) (tab n "}")
 
 and show_expr n = function
 	| Val i -> string_of_int i
-	| Var name -> name
+	| LV lv -> show_lvalue lv
 	| Arith(op, e1, e2) -> Printf.sprintf "(%s %s %s)" (show_expr n e1) (show_op op) (show_expr n e2)
 	| Call(name, elist) -> Printf.sprintf "%s(%s)" name (List.map (show_expr n) elist |> String.concat ", ") 
-	| Arr(name, e) -> Printf.sprintf "%s[%s]" name (show_expr n e)
-	| SubArr(name, seq) -> Printf.sprintf "%s[%s]" name (show_seq seq)
 	| Seq seq -> show_seq seq
 	| Length e -> Printf.sprintf "|%s|" (show_expr n e)
 	| Head e -> (show_expr n e) ^ ".head"
 	| Tail e -> (show_expr n e) ^ ".tail"
-	| New(arrtype, e) -> Printf.sprintf "new %s[%s]" (show_type arrtype) (show_expr n e) 
+	| New(arrtype, e) -> Printf.sprintf "new %s[%s]" (show_atype arrtype) (show_expr n e) 
 	| If(con, e1, e2o) -> Printf.sprintf "if %s then %s %s" (show_cond n con) (show_expr n e1) 
 													(Option.map_default (show_expr n >> Printf.sprintf "else %s") "" e2o)
 	| Lambda(name_list, e) -> Printf.sprintf "(%s) => %s" (String.concat ", " name_list) (show_expr n e) 
@@ -94,19 +98,21 @@ and show_cond n = function
 	| Not con -> Printf.sprintf "not (%s)" (show_cond n con)
 
 and show_lvalue = function
-	| LVar name -> name
-	| LArr(name, e) -> Printf.sprintf "%s[%s]" name (show_expr 0 e)
-	| LSubArr(name, seq) -> Printf.sprintf "%s[%s]" name (show_seq seq);;
+	| Var name -> name
+	| ArrElt(name, e) -> Printf.sprintf "%s[%s]" name (show_expr 0 e)
+	| SubArr(name, seq) -> Printf.sprintf "%s[%s]" name (show_seq seq)
 
+and show_ftype = function
+	| FInt -> "int" | FStruct nm -> nm | FArray(aty, n) -> Printf.sprintf "%s[%s]" (show_atype aty) (show_num n)
+	
+and show_num = function NVal i -> string_of_int i | NVar nm -> nm;;
 (*********************** recursion check ***********************************)
 
 let rec is_recursive funname = function
 	| Val i -> false
-	| Var name -> name = funname
+	| LV lv -> lvalue_uses_fun funname lv
 	| Arith(op, e1, e2) -> (is_recursive funname e1) || (is_recursive funname e2) 
 	| Call(name, elist) -> funname = name || (List.exists (is_recursive funname) elist) 
-	| Arr(name, e) -> is_recursive funname e
-	| SubArr(_, seq) 
 	| Seq seq ->  seq_uses_fun funname seq
 	| Length e | Head e | Tail e -> is_recursive funname e
 	| New(arrtype, e) -> is_recursive funname e 
@@ -129,12 +135,17 @@ and stmt_uses_fun funname = function
 			is_recursive funname exp) 
 	| Write(_, e) | Print e	| Ret e	| Expr e -> is_recursive funname e
 	| For(name_seq_list, code) -> (List.exists (snd >> seq_uses_fun funname) name_seq_list) || (List.exists (stmt_uses_fun funname) code)
+	| Typedef _ -> false
 
-		
 and seq_uses_fun funname = function 
 	| SVal _ -> false 
 	| SRange(e1, e2) -> (is_recursive funname e1) || (is_recursive funname e2)		
-		
+
+and lvalue_uses_fun funname = function
+	| Var name -> name = funname
+	| ArrElt(_, e) -> is_recursive funname e
+	| SubArr(_, seq) -> seq_uses_fun funname seq
+				
 (*********************** expand ************************************)		
 
 type name_desc = NValue | NFun of name list * expr | NRecFun of int;;
@@ -142,7 +153,7 @@ type name_desc = NValue | NFun of name list * expr | NRecFun of int;;
 let add_name ctx name desc = M.add name desc ctx;;
 let get_name ctx name = M.find name ctx;;
 let rename map name = 
-	try (match M.find name map with Var nm -> nm | _ -> name) with Not_found -> name 	
+	try (match M.find name map with LV(Var nm) -> nm | _ -> name) with Not_found -> name 	
 
 let rec expand_code ctx code = 
 	let ctx2, code2 = 
@@ -167,23 +178,22 @@ and expand_stmt ctx = function
 			let _, ecode = expand_code ctx code in
 			ctx, Some(For(ns, ecode))
 	| Ret e -> ctx, Some(Ret(expand_expr ctx e))
+	| Typedef _ as x -> ctx, Some x
 
 and expand_lvalue ctx = function
-	| LVar _ as x -> x
-	| LArr(name, e) -> LArr(name, expand_expr ctx e)
-	| LSubArr(name, seq) -> LSubArr(name, expand_seq ctx seq)
+	| Var _ as x -> x
+	| ArrElt(name, e) -> ArrElt(name, expand_expr ctx e)
+	| SubArr(name, seq) -> SubArr(name, expand_seq ctx seq)
 
 and expand_seq ctx = function
 	| SVal _ as x -> x 
 	| SRange(e1, e2) -> SRange(expand_expr ctx e1, expand_expr ctx e2)
 
 and expand_expr ctx = function
-	| Val i as x -> x 
-	| Var name as x -> x 
+	| Val i as x -> x
+	| LV lv -> LV (expand_lvalue ctx lv) 
 	| Arith(op, e1, e2) -> Arith(op, expand_expr ctx e1, expand_expr ctx e2) 
 	| Call(name, elist) -> expand_call ctx name elist
-	| Arr(name, e) -> Arr(name, expand_expr ctx e)
-	| SubArr(name, seq) ->  SubArr(name, expand_seq ctx seq)
 	| Seq seq -> Seq(expand_seq ctx seq)
 	| Length e -> Length(expand_expr ctx e) 
 	| Head e -> Head(expand_expr ctx e)
@@ -203,9 +213,9 @@ and expand_con ctx = function
 and argval k (argname, argexp) =
 	let var = Printf.sprintf "%s_%d" argname k in 
 	match argexp with
-	| Val _ | Var _	| SubArr _ | Seq _ -> argexp, None 
-	| Arith _ | Call _ | Arr _ | Length _ | Head _ | Tail _  | New _ | If _ | Comp _ -> Var var, Some(Def(var, [], argexp))
-	| Lambda(name_list, e) -> Var var, Some(Def(var, name_list, e)) 
+	| Val _ | LV(Var _)	| LV(SubArr _) | Seq _ -> argexp, None 
+	| Arith _ | Call _ | LV(ArrElt _) | Length _ | Head _ | Tail _  | New _ | If _ | Comp _ -> LV(Var var), Some(Def(var, [], argexp))
+	| Lambda(name_list, e) -> LV(Var var), Some(Def(var, name_list, e)) 
 
 and expand_call ctx name elist =
 	try
@@ -223,16 +233,13 @@ and expand_call ctx name elist =
 				let narg = List.length elist in 
 				if np = narg  then Call(name, List.map (expand_expr ctx) elist)
 				else failwith (Printf.sprintf "wrong number of arguments for '%s' (%d instead of %d)" name narg np))  
-	with Not_found -> failwith (Printf.sprintf "function '%s' not found" name)
-	
+	with Not_found -> failwith (Printf.sprintf "function '%s' not found" name)	
 	
 and subst_expr subs_map k = function
 	| Val i as x -> x 
-	| Var name as x -> (try M.find name subs_map with Not_found -> x)   
+	| LV lv -> subst_lvalue_expr subs_map k lv
 	| Arith(op, e1, e2) -> Arith(op, subst_expr subs_map k e1, subst_expr subs_map k e2) 
 	| Call(name, elist) -> Call(rename subs_map name, List.map (subst_expr subs_map k) elist)
-	| Arr(name, e) -> Arr(rename subs_map name, subst_expr subs_map k e)
-	| SubArr(name, seq) ->  SubArr(rename subs_map name, subst_seq subs_map k seq)
 	| Seq seq -> Seq(subst_seq subs_map k seq)
 	| Length e -> Length(subst_expr subs_map k e)
 	| Head e -> Head(subst_expr subs_map k e)
@@ -243,7 +250,7 @@ and subst_expr subs_map k = function
 	| Comp code -> Comp(subst_code subs_map k code)	
 	
 and subst_seq subs_map k = function
-	| SVal name -> (try (match M.find name subs_map with Seq s -> s | Var v -> SVal v | _ -> SVal name) 
+	| SVal name -> (try (match M.find name subs_map with Seq s -> s | LV(Var v) -> SVal v | _ -> SVal name) 
 									with Not_found -> SVal(rename subs_map name)) 
 	| SRange(e1, e2) -> SRange(subst_expr subs_map k e1, subst_expr subs_map k e2)
 	
@@ -262,7 +269,7 @@ and subst_code subs_map k code =
 and subst_stmt subs k = function
 	| Def(name, arglist, exp) -> 
 			let name1 = Printf.sprintf "%s_%d" name k in
-			let subs1 = M.add name (Var name1) subs in
+			let subs1 = M.add name (LV(Var name1)) subs in
 			let subs2 = List.fold_left (fun m par_name -> M.remove par_name m) subs1 arglist in
 			subs1, Def(name1, arglist, subst_expr subs2 k exp) 			
 	| Write(lv, e) -> subs, Write(subst_lvalue subs k lv, subst_expr subs k e) 
@@ -272,18 +279,23 @@ and subst_stmt subs k = function
 			let ns = List.map (fun (nm, sq) -> nm, subst_seq subs k sq) name_seq_list in
 			subs, For(ns, subst_code subs k code)
 	| Ret e -> subs, Ret(subst_expr subs k e)
+	| Typedef _ as x -> subs, x
 			
-and subst_lvalue subs k = function
-	| LVar name -> LVar(rename subs name)
-	| LArr(name, e) -> LArr(rename subs name, subst_expr subs k e)
-	| LSubArr(name, seq) -> LSubArr(rename subs name, subst_seq subs k seq);;
-	
+and subst_lvalue_expr subs k = function
+	| Var name as x -> (try M.find name subs with Not_found -> LV x) (*Var(rename subs name)*)
+	| ArrElt(name, e) -> LV (ArrElt(rename subs name, subst_expr subs k e))
+	| SubArr(name, seq) -> LV (SubArr(rename subs name, subst_seq subs k seq))
+
+and subst_lvalue subs k lv = 
+	match subst_lvalue_expr subs k lv with
+	| LV lv -> lv
+	| e -> failwith "lvalue turned into expr after subst";;
+
 (*************************** compile ********************************)		
 
 module C = Leoc
 type comp_res = Code of Leoc.code | Func of name
 
-type num = NVal of int | NVar of name
 type val_type = TVoid | TInt | TByte | TArray of val_type * num | TRange of num * num
 
 let rec show_type = function
@@ -334,7 +346,7 @@ let rec returnize = function
 											| _ -> x)
 	| e -> Comp [Ret e]  	
 	
-let seq_of_expr = function Var nm -> SVal nm | Seq s -> s | _ -> failwith "strange range" 	
+let seq_of_expr = function LV(Var nm) -> SVal nm | Seq s -> s | _ -> failwith "strange range" 	
 	
 let rec compile_code ctx code =
 	let ctx1, code1 = List.fold_left (fun (cx,cd) stmt -> let cx1, st1 = compile_stmt cx stmt in cx1, st1::cd) (ctx, []) code in
@@ -344,7 +356,7 @@ and compile_stmt ctx = function
 	| Def(name, [], If(con, e1, e2o)) ->
 			let _, _, ty, _ = compile_expr ctx e1 in
 			let ctx1 = addvar ctx name ty in
-			let ctx2, compres = compile_stmt ctx1 (Write(LVar name, If(con, e1, e2o))) in
+			let ctx2, compres = compile_stmt ctx1 (Write(Var name, If(con, e1, e2o))) in
 			ctx2, Code ([C.DefVar name] @ get_code ctx2 compres)  
 	| Def(name, [], exp) -> 
 			let ctx1, code1, ty, rc = compile_expr ctx exp in
@@ -365,7 +377,7 @@ and compile_stmt ctx = function
 			compile_stmt ctx (Expr(If(con, Comp[Write(lv, e1)], e2o' )))
 	| Write(lv, e) as orgst-> 
 			(match lv with
-			| LVar name -> 
+			| Var name -> 
 					let lty = gettype ctx name in
 					let ctx1, code1, ty, rc = compile_expr ctx e in					
 					let code2 =	(match lty, ty, rc with
@@ -378,26 +390,26 @@ and compile_stmt ctx = function
 								let k = uid () in
 								let ivar = Printf.sprintf "i_%d" k and jvar = Printf.sprintf "j_%d" k in
 								let st = For([ivar, SVal name; jvar, SVal name2], [
-													Write(LVar ivar, Var jvar)   
+													Write(Var ivar, LV(Var jvar))   
 												 ]) in
 								(match compile_stmt ctx st with _, Code code' -> code' | _, _ -> failwith "bad result of array copy compilation")
 						| TArray(laty, lalen), TRange(n1, n2), [rv_beg; rv_end] ->
 								let k = uid () in
 								let ivar = Printf.sprintf "i_%d" k and jvar = Printf.sprintf "j_%d" k in
 								let st = For([ivar, SVal name; jvar, seq_of_expr e], [
-													Write(LVar ivar, Var jvar)   
+													Write(Var ivar, LV(Var jvar))   
 												 ]) in
 								(match compile_stmt ctx st with _, Code code' -> code' | _, _ -> failwith "bad result of array copy compilation")																	
 						| TRange _, _, _ -> failwith ("writing to range var is not supported: "^ name)
 						| _, _, _ -> failwith (Printf.sprintf "type mismatch in '%s': %s and %s" (show_stmt 1 orgst) (show_type lty) (show_type ty)))
 						in
 					ctx1, Code(code1 @ code2) 
-			| LArr(name, ie) -> 
+			| ArrElt(name, ie) -> 
 					let lty = gettype ctx name in
 					let ctx1, code1, ity, irc = compile_expr ctx ie in					
 					let is_idx_range = match ity with TRange _ -> true | _ -> false in
 					if is_idx_range then 
-						compile_stmt ctx (Write(LSubArr(name, seq_of_expr ie), e)) 
+						compile_stmt ctx (Write(SubArr(name, seq_of_expr ie), e)) 
 					else						
 						let ctx2, code2, ty, rc = compile_expr ctx1 e in
 						let idx_rv0 = (match ity, irc with
@@ -417,23 +429,24 @@ and compile_stmt ctx = function
 							| TArray(TByte, _), TByte, [rv] -> [C.Assignb(C.PLocal pnt_var, rv)]  
 							| _, _, _ -> failwith (Printf.sprintf "type mismatch in '%s': %s and %s" (show_stmt 1 orgst) (show_type lty) (show_type ty))) in
 						ctx, Code (code1 @ code2 @ [Leoc.Comp(code_prep @ code3)])
-			| LSubArr(name, seq) ->
+			| SubArr(name, seq) ->
 					let k = uid () in
 					let ivar = Printf.sprintf "i_%d" k and jvar = Printf.sprintf "j_%d" k in			
 					let st = match e with
-						| SubArr(arr, aseq) -> For([ivar,seq; jvar,aseq], [Write(LArr(name, Var ivar), Arr(arr, Var jvar))])
-						| Seq aseq -> For([ivar,seq; jvar,aseq], [Write(LArr(name, Var ivar), Var jvar)])
-						| Var m ->
+						| LV(SubArr(arr, aseq)) -> For([ivar,seq; jvar,aseq], 
+																				[Write(ArrElt(name, LV(Var ivar)), LV(ArrElt(arr, LV(Var jvar))))])
+						| Seq aseq -> For([ivar,seq; jvar,aseq], [Write(ArrElt(name, LV(Var ivar)), LV(Var jvar))])
+						| LV(Var m) ->
 								(match gettype ctx m with
 								| TVoid -> failwith ("writing void expression to "^name)
-								| TInt | TByte -> For([ivar, seq], [Write(LArr(name, Var ivar), e)])
-								| TRange _ | TArray _ ->  For([ivar, seq; jvar, SVal m], [Write(LArr(name, Var ivar), Var jvar)]))
-						| Arr(rname, ie) ->
+								| TInt | TByte -> For([ivar, seq], [Write(ArrElt(name, LV(Var ivar)), e)])
+								| TRange _ | TArray _ ->  For([ivar, seq; jvar, SVal m], [Write(ArrElt(name, LV(Var ivar)), LV(Var jvar))]))
+						| LV(ArrElt(rname, ie)) ->
 								let _, _, iety, _ = compile_expr ctx ie in
 								(match iety with
-									| TRange _ -> Write(lv, SubArr(rname, seq_of_expr ie))
-									| _ -> For([ivar, seq], [Write(LArr(name, Var ivar), e)]))
-						| _ -> For([ivar, seq], [Write(LArr(name, Var ivar), e)]) in
+									| TRange _ -> Write(lv, LV(SubArr(rname, seq_of_expr ie)))
+									| _ -> For([ivar, seq], [Write(ArrElt(name, LV(Var ivar)), e)]))
+						| _ -> For([ivar, seq], [Write(ArrElt(name, LV(Var ivar)), e)]) in
 					compile_stmt ctx st )
 	| Print e -> 
 			let _, code, ty, rc = compile_expr ctx e in
@@ -498,11 +511,12 @@ and compile_stmt ctx = function
 			| TInt, rvs ->  ctx, Code (code @ [Leoc.Ret rvs])
 			| TByte, rvs -> ctx, Code (code @ [Leoc.Ret (List.map (fun rv-> Leoc.Byte rv) rvs)])
 			| TVoid, _ -> ctx, Code  (code @ [Leoc.Ret []])
-			| _, _ -> failwith (Printf.sprintf "trying to return a %s" (show_type ty)))					 
+			| _, _ -> failwith (Printf.sprintf "trying to return a %s" (show_type ty)))
+	| Typedef _ -> ctx, Code []					 
 			
 and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.code * val_type * Leoc.rvalue list) = fun ctx -> function
 	| Val i -> ctx, [], TInt, [Leoc.Val i] 
-	| Var name -> 
+	| LV(Var name) -> 
 			let ty = gettype ctx name in
 			let rvc =	(match ty with
 				| TInt  | TByte   -> [Leoc.Var name]    
@@ -518,14 +532,14 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 	| Call(name, elist) -> 
 			let ctx1, code1, args, compfun = get_compiled_fun ctx name elist in
 			ctx1, code1, compfun.ftype, [Leoc.FCall(compfun.uname, args)]			
-	| Arr(name, e) ->
+	| LV(ArrElt(name, e)) ->
 			let aty, alen = match gettype ctx name with
 				| TArray(ty, len) -> ty, len
 				| _ -> failwith (name ^ " is not an array") in
 			let ctx1, code1, ety, erc = compile_expr ctx e in
 			let is_idx_range = match ety with TRange _ -> true | _ -> false in		
 			if is_idx_range then 
-				compile_expr ctx (SubArr(name, seq_of_expr e)) 
+				compile_expr ctx (LV(SubArr(name, seq_of_expr e))) 
 			else					
 				let idx_rv = match ety, erc with
 					| TInt, [rv] -> rv
@@ -591,7 +605,7 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 						code, TRange(num1, n2), [rv_of_num num1; rv_of_num n2]																																			 
 				| _ -> failwith (Printf.sprintf "bad type in Head(%s), type: %s" (show_expr 0 exp) (show_type ty))) in
 			ctx, code1 @ code2, tty, rvs
-	| SubArr(name, seq) -> 
+	| LV(SubArr(name, seq)) -> 
 			let prep_code, rv1, rv2 = match seq with 
 				| SRange(e1, e2) -> 
 						let _, code1, ty1, rc1 = compile_expr ctx e1 in
@@ -723,7 +737,7 @@ and compile_cond ctx = function
 (***********************************************************)		
 
 
-let prg = [
+(*let prg = [
 	Def("x", [], Val 5);
 	Def("sum", ["a"; "b"], Arith(Add, Var "a", Var "b"));
 	Def("m", [], New(AInt, Val 10));
@@ -799,7 +813,7 @@ let prg = [
 	Expr(Call("showall", [SubArr("m", SRange(Val 5, Val 7))]));
 	
 	Write(LSubArr("m", SRange(Val 3, Val 6)), Var "a");
-];;
+];;*)
 
 let process prg show =
 	if show then begin

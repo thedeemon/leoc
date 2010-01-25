@@ -42,6 +42,7 @@ rule lexer = parse
  | "new"                 { Lnew }
  | "byte"                { Lbyte }
  | "int"                 { Ltint }
+ | "type"                { Ltype }
  | ','                   { Lcomma }
  | '\\'                  { Lbackslash }
  | ':'									 { Lcolon }
