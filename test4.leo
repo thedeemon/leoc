@@ -17,3 +17,5 @@ type rec = {
  a : int[55]
 }
  
+args : rec
+zzz: point

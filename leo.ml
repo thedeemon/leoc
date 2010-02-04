@@ -13,6 +13,7 @@ and statement =
 	| For of (name * seq) list * code
 	| Ret of expr
 	| Typedef of name * (name * field_type) list
+	| Typing of name * name
 
 and expr =
 	| Val of int
@@ -69,6 +70,7 @@ and show_stmt n = function
 			let show_field (nm, ft) = Printf.sprintf "%s : %s;\n" nm (show_ftype ft) |> tab (n+1) in
 			let delim = tab n "" in			 
 			Printf.sprintf "type %s = {\n%s%s" name (List.map show_field fields |> String.concat delim) (tab n "}")
+	| Typing(varname, typename) -> Printf.sprintf "%s : %s" varname typename
 
 and show_expr n = function
 	| Val i -> string_of_int i
@@ -135,7 +137,7 @@ and stmt_uses_fun funname = function
 			is_recursive funname exp) 
 	| Write(_, e) | Print e	| Ret e	| Expr e -> is_recursive funname e
 	| For(name_seq_list, code) -> (List.exists (snd >> seq_uses_fun funname) name_seq_list) || (List.exists (stmt_uses_fun funname) code)
-	| Typedef _ -> false
+	| Typedef _ | Typing _ -> false
 
 and seq_uses_fun funname = function 
 	| SVal _ -> false 
@@ -178,7 +180,7 @@ and expand_stmt ctx = function
 			let _, ecode = expand_code ctx code in
 			ctx, Some(For(ns, ecode))
 	| Ret e -> ctx, Some(Ret(expand_expr ctx e))
-	| Typedef _ as x -> ctx, Some x
+	| (Typedef _ as x) | (Typing _ as x) -> ctx, Some x
 
 and expand_lvalue ctx = function
 	| Var _ as x -> x
@@ -279,7 +281,7 @@ and subst_stmt subs k = function
 			let ns = List.map (fun (nm, sq) -> nm, subst_seq subs k sq) name_seq_list in
 			subs, For(ns, subst_code subs k code)
 	| Ret e -> subs, Ret(subst_expr subs k e)
-	| Typedef _ as x -> subs, x
+	| (Typedef _ as x) | (Typing _ as x) -> subs, x
 			
 and subst_lvalue_expr subs k = function
 	| Var name as x -> (try M.find name subs with Not_found -> LV x) (*Var(rename subs name)*)
@@ -512,7 +514,7 @@ and compile_stmt ctx = function
 			| TByte, rvs -> ctx, Code (code @ [Leoc.Ret (List.map (fun rv-> Leoc.Byte rv) rvs)])
 			| TVoid, _ -> ctx, Code  (code @ [Leoc.Ret []])
 			| _, _ -> failwith (Printf.sprintf "trying to return a %s" (show_type ty)))
-	| Typedef _ -> ctx, Code []					 
+	| Typedef _ | Typing _ -> ctx, Code []					 
 			
 and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.code * val_type * Leoc.rvalue list) = fun ctx -> function
 	| Val i -> ctx, [], TInt, [Leoc.Val i] 

@@ -99,10 +99,11 @@ and stmt_r s = (
 	||| (tok Ltype >>> ident >>= fun tname -> tok Leq >>> tok Llcurly >>> opt_terms >>>
 				p_list field_def terms >>= fun flds -> opt_terms >>> tok Lrcurly >>>
 					return (Leo.Typedef(tname, flds))	)
-	|||(ident >>= fun name -> opt_params >>= fun ps -> tok Leq >>> opt_terms >>>
+	||| (ident >>= fun name -> opt_params >>= fun ps -> tok Leq >>> opt_terms >>>
 				expr >>= fun e1 -> tok Ldot2 >>> expr >>= fun e2 -> return (Leo.Def(name, ps, Leo.Seq(Leo.SRange(e1,e2)))))
-	|||(ident >>= fun name -> opt_params >>= fun ps -> tok Leq >>> opt_terms >>>
+	||| (ident >>= fun name -> opt_params >>= fun ps -> tok Leq >>> opt_terms >>>
 				(expr ||| (stmt >>= fun st -> return (Leo.Comp[st]))) >>= fun e -> return (Leo.Def(name, ps, e)))
+	||| (ident >>= fun vname -> tok Lcolon >>> ident >>= fun tname -> return (Leo.Typing(vname, tname)))
 	||| (lvalue >>= fun lv -> tok Lwrite >>> expr >>= fun e1 -> tok Ldot2 >>> expr >>= fun e2 ->  
 				return (Leo.Write(lv, Leo.Seq(Leo.SRange(e1,e2)))))
 	||| (lvalue >>= fun lv -> tok Lwrite >>> expr >>= fun e -> return (Leo.Write(lv, e)))
