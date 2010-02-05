@@ -180,7 +180,7 @@ and expand_stmt ctx = function
 			let _, ecode = expand_code ctx code in
 			ctx, Some(For(ns, ecode))
 	| Ret e -> ctx, Some(Ret(expand_expr ctx e))
-	| (Typedef _ as x) | (Typing _ as x) -> ctx, Some x
+	| Typedef _ | Typing _ as x -> ctx, Some x
 
 and expand_lvalue ctx = function
 	| Var _ as x -> x
@@ -318,12 +318,12 @@ let addvar ctx name ty =
 	{ctx with vars = M.add name ty ctx.vars};;
 
 let gettype ctx name = try M.find name ctx.vars with Not_found -> failwith ("unknown type of "^name)
-let rv_of_num = function NVal i -> Leoc.Val i | NVar nm -> Leoc.Var nm
+let rv_of_num = function NVal i -> Leoc.Val i | NVar nm -> Leoc.LV(Leoc.Var nm)
 let num_of_rv ctx = function
-	| Leoc.Val i -> ctx, [], NVal i
-	| Leoc.Var v -> ctx, [], NVar v
+	| C.Val i -> ctx, [], NVal i
+	| C.LV(C.Var v) -> ctx, [], NVar v
 	| rv -> let var = Printf.sprintf "bound_%d" (uid ()) in
-					addvar ctx var TInt, [C.DefVar var; C.Assign(C.Local var, rv)], NVar var;;
+					addvar ctx var TInt, [C.DefVar var; C.Assign(C.Var var, rv)], NVar var;;
 	
 let get_code ctx = function 
 	| Code c -> c 
@@ -364,9 +364,9 @@ and compile_stmt ctx = function
 			let ctx1, code1, ty, rc = compile_expr ctx exp in
 			let ctx2 = addvar ctx1 name ty in
 			let code2 =	(match ty, rc with
-				| TInt, [rv] ->  [Leoc.DefVar name; Leoc.Assign(Leoc.Local name, rv)]
-				| TByte, [rv] -> [Leoc.DefVar name; Leoc.Assignb(Leoc.Local name, rv)]
-				| TArray(aty, alen), [rva; rvlen] -> [Leoc.DefVar name; Leoc.Assign(Leoc.Local name, rva)]
+				| TInt, [rv] ->  [Leoc.DefVar name; Leoc.Assign(Leoc.Var name, rv)]
+				| TByte, [rv] -> [Leoc.DefVar name; Leoc.Assignb(Leoc.Var name, rv)]
+				| TArray(aty, alen), [rva; rvlen] -> [Leoc.DefVar name; Leoc.Assign(Leoc.Var name, rva)]
 				| TRange(n1, n2), [rv1; rv2] -> [] (* data already exist and referenced in type *)
 				| TVoid, _ -> failwith ("defining a void value "^name)
 				| _, _ -> failwith "bad number of values in Def") in
@@ -383,12 +383,12 @@ and compile_stmt ctx = function
 					let lty = gettype ctx name in
 					let ctx1, code1, ty, rc = compile_expr ctx e in					
 					let code2 =	(match lty, ty, rc with
-						| TInt, TInt, [rv] ->  [Leoc.Assign(Leoc.Local name, rv)]
-						| TInt, TByte, [rv] ->  [Leoc.Assign(Leoc.Local name, Leoc.Byte rv)]
+						| TInt, TInt, [rv] ->  [Leoc.Assign(Leoc.Var name, rv)]
+						| TInt, TByte, [rv] ->  [Leoc.Assign(Leoc.Var name, Leoc.Byte rv)]
 						| TByte, TByte, [rv] 
-						| TByte, TInt, [rv] -> [Leoc.Assignb(Leoc.Local name, rv)]
+						| TByte, TInt, [rv] -> [Leoc.Assignb(Leoc.Var name, rv)]
 						| TArray(laty, lalen), TArray(aty, alen), [rva; rvlen] ->
-								let name2 = match rva with Leoc.Var v -> v | _ -> failwith "bad array in array copy" in
+								let name2 = match rva with C.LV(C.Var v) -> v | _ -> failwith "bad array in array copy" in
 								let k = uid () in
 								let ivar = Printf.sprintf "i_%d" k and jvar = Printf.sprintf "j_%d" k in
 								let st = For([ivar, SVal name; jvar, SVal name2], [
@@ -423,12 +423,12 @@ and compile_stmt ctx = function
 							| TArray(TInt, _) -> Leoc.Arith(Mul, idx_rv0, Leoc.Val 4)
 							| _ -> failwith ("bad array type for "^name)) in
 						let pnt_var = Printf.sprintf "pnt_%d" (uid()) in
-						let code_prep = [C.DefVar pnt_var; C.Assign(C.Local pnt_var, C.Arith(Add, C.Var name, idx_rv))] in
+						let code_prep = [C.DefVar pnt_var; C.Assign(C.Var pnt_var, C.Arith(Add, C.LV(C.Var name), idx_rv))] in
 						let code3 =	(match lty, ty, rc with
-							| TArray(TInt, _), TInt, [rv]  -> [C.Assign(C.PLocal pnt_var, rv)]
-							| TArray(TInt, _), TByte, [rv] -> [C.Assign(C.PLocal pnt_var, Leoc.Byte rv)]
+							| TArray(TInt, _), TInt, [rv]  -> [C.Assign(C.PVar pnt_var, rv)]
+							| TArray(TInt, _), TByte, [rv] -> [C.Assign(C.PVar pnt_var, Leoc.Byte rv)]
 							| TArray(TByte, _), TInt, [rv]   
-							| TArray(TByte, _), TByte, [rv] -> [C.Assignb(C.PLocal pnt_var, rv)]  
+							| TArray(TByte, _), TByte, [rv] -> [C.Assignb(C.PVar pnt_var, rv)]  
 							| _, _, _ -> failwith (Printf.sprintf "type mismatch in '%s': %s and %s" (show_stmt 1 orgst) (show_type lty) (show_type ty))) in
 						ctx, Code (code1 @ code2 @ [Leoc.Comp(code_prep @ code3)])
 			| SubArr(name, seq) ->
@@ -480,30 +480,31 @@ and compile_stmt ctx = function
 						let _, e1code, _, rc1 = compile_expr ctx e1 in
 						let _, e2code, _, rc2 = compile_expr ctx (Arith(Add, e2, Val 1)) in
 						e1code @ e2code @ 
-						[Leoc.Assign(Leoc.Local (mkname name), List.hd rc1); 
-						 Leoc.Assign(Leoc.Local (mkend name), List.hd rc2)], 1
+						[Leoc.Assign(Leoc.Var (mkname name), List.hd rc1); 
+						 Leoc.Assign(Leoc.Var (mkend name), List.hd rc2)], 1
 				| SVal sname ->
 						match gettype ctx sname with
-						| TRange(n1, n2) -> [Leoc.Assign(Leoc.Local (mkname name), rv_of_num n1); 
-								Leoc.Assign(Leoc.Local (mkend name), Leoc.Arith(Add, rv_of_num n2, C.Val 1))], 1
+						| TRange(n1, n2) -> [Leoc.Assign(Leoc.Var (mkname name), rv_of_num n1); 
+								Leoc.Assign(Leoc.Var (mkend name), Leoc.Arith(Add, rv_of_num n2, C.Val 1))], 1
 						| TArray(aty, alen) ->
 								let rv_len = rv_of_num alen in
 								let rv_end, delta = match aty with
-									| TByte -> C.Arith(Add, C.Var sname, rv_len), 1
-									| TInt -> C.Arith(Add, C.Var sname, C.Arith(Mul, rv_len, C.Val 4)), 4
+									| TByte -> C.Arith(Add, C.LV(C.Var sname), rv_len), 1
+									| TInt -> C.Arith(Add, C.LV(C.Var sname), C.Arith(Mul, rv_len, C.Val 4)), 4
 									| _ -> failwith "bad array type in seq" in 
-								[Leoc.Assign(Leoc.Local (mkname name), Leoc.Var sname);
-						  	 Leoc.Assign(Leoc.Local (mkend name), rv_end)], delta
+								[C.Assign(C.Var (mkname name), C.LV(C.Var sname));
+						  	 C.Assign(C.Var (mkend name), rv_end)], delta
 						| _ -> failwith "value of wrong type in seq")) name_seq_list |> List.split in
 			let init_code = List.concat init_codes in  
-			let conds = org_names |> List.map (fun s -> Leoc.Less(C.Var (mkname s), C.Var (mkend s))) in 
+			let conds = org_names |> List.map (fun s -> Leoc.Less(C.LV(C.Var (mkname s)), C.LV(C.Var (mkend s)))) in 
 			let cond = List.fold_left (fun con cmp -> Leoc.And(con, cmp)) (List.hd conds) (List.tl conds) in
-			let next_code = List.map2 (fun inm delta -> Leoc.Assign(Leoc.Local inm, C.Arith(Add, C.Var inm, C.Val delta))) names deltas in
+			let next_code = List.map2 (fun inm delta -> 
+				Leoc.Assign(Leoc.Var inm, C.Arith(Add, C.LV(C.Var inm), C.Val delta))) names deltas in
 			let _, ccode = compile_code ctx1 code in
 			let subs = List.map2 (fun orgname is_pnt ->
 									let s = mkname orgname in
-									if is_pnt then orgname, Leoc.PVar s else orgname, Leoc.Var s) org_names elt_pointers in
-			let subs_map = List.fold_left (fun m (orgname, rv) ->	M.add orgname rv m) M.empty subs in
+									if is_pnt then orgname, C.PVar s else orgname, C.Var s) org_names elt_pointers in
+			let subs_map = List.fold_left (fun m (orgname, lv) ->	M.add orgname lv m) M.empty subs in
 			let ccode1 = Leoc.subst_code subs_map ccode in
 			let all_code = def_code @ init_code @ [Leoc.While(cond, ccode1 @ next_code)] in
 			ctx, Code [Leoc.Comp all_code] 
@@ -521,9 +522,9 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 	| LV(Var name) -> 
 			let ty = gettype ctx name in
 			let rvc =	(match ty with
-				| TInt  | TByte   -> [Leoc.Var name]    
+				| TInt  | TByte   -> [C.LV(C.Var name)]    
 				| TVoid -> []
-				| TArray(aty, alen) -> [Leoc.Var name; rv_of_num alen]
+				| TArray(aty, alen) -> [C.LV(C.Var name); rv_of_num alen]
 				| TRange(st,en) -> [rv_of_num st; rv_of_num en]) in
 			ctx, [], ty, rvc
 	| Arith(op, e1, e2) ->
@@ -550,8 +551,8 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 				let elt_size = match aty with
 					| TInt  -> 4	| TByte  -> 1	| _ -> failwith (name ^ "is an array of an unsuported type") in  
 				let rv = 
-					if elt_size > 1 then Leoc.PArith(Add, Leoc.Var name, Leoc.Arith(Mul, idx_rv, Leoc.Val elt_size))   
-					else Leoc.PArith(Add, Leoc.Var name, idx_rv) in
+					if elt_size > 1 then Leoc.PArith(Add, C.LV(C.Var name), Leoc.Arith(Mul, idx_rv, Leoc.Val elt_size))   
+					else Leoc.PArith(Add, C.LV(C.Var name), idx_rv) in
 				ctx1, code1, aty, [rv]	
 	| Seq(SRange(e1, e2)) ->
 			let ctx1, code1, ty1, rc1 = compile_expr ctx e1 in
@@ -583,7 +584,7 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 			let _, code1, ty, rc = compile_expr ctx exp in
 			let hty, rv = (match ty with
 				| TArray(aty, alen) -> aty, (match List.hd rc with 
-						| C.Var v -> C.PVar v
+						| C.LV(C.Var v) -> C.LV(C.PVar v)
 						| C.Arith(op,a,b) -> C.PArith(op, a,b) 
 						| _ -> failwith "head of strange array")						
 				| TRange(n1, n2) -> TInt, rv_of_num n1														 
@@ -596,14 +597,14 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 						let code, len' = (match alen with 
 							| NVal i -> [],  NVal (i-1)
 							| NVar v -> let lenvar = Printf.sprintf "arr_len_%d" (uid ()) in
-													[C.DefVar lenvar; C.Assign(C.Local lenvar, C.Arith(Sub, C.Var v, C.Val 1))], NVar lenvar) in													
+													[C.DefVar lenvar; C.Assign(C.Var lenvar, C.Arith(Sub, C.LV(C.Var v), C.Val 1))], NVar lenvar) in													
 						let elt_size = match aty with TInt  -> 4 | TByte  -> 1 | _ -> failwith "Tail of an array of an unsuported type" in
 						code, TArray(aty, len'), [C.Arith(Add, List.hd rc1, C.Val elt_size); rv_of_num len']
 				| TRange(n1, n2) -> 
 						let code, num1 = match n1 with 
 							| NVal i -> [], NVal (i+1) 
 							| NVar v -> let numvar = Printf.sprintf "bound_%d" (uid()) in
-													[C.DefVar numvar; C.Assign(C.Local numvar, C.Arith(Add, C.Var v, C.Val 1))], NVar numvar in
+													[C.DefVar numvar; C.Assign(C.Var numvar, C.Arith(Add, C.LV(C.Var v), C.Val 1))], NVar numvar in
 						code, TRange(num1, n2), [rv_of_num num1; rv_of_num n2]																																			 
 				| _ -> failwith (Printf.sprintf "bad type in Head(%s), type: %s" (show_expr 0 exp) (show_type ty))) in
 			ctx, code1 @ code2, tty, rvs
@@ -621,9 +622,9 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 				| TArray(aty, alen) -> (match aty with TInt->4 | TByte->1 | _->failwith "bad array type"), aty
 				| _ -> failwith (name ^ " is not an array") in
 			let lenvar = Printf.sprintf "arr_len_%d" (uid()) in
-			let len_code = [C.DefVar lenvar; C.Assign(C.Local lenvar, C.Arith(Add, C.Arith(Sub, rv2, rv1), C.Val 1))] in
+			let len_code = [C.DefVar lenvar; C.Assign(C.Var lenvar, C.Arith(Add, C.Arith(Sub, rv2, rv1), C.Val 1))] in
 			let rv_begin = if elt_size > 1 then C.Arith(Mul, rv1, C.Val elt_size) else rv1 in
-			ctx, prep_code @ len_code, TArray(ety, NVar lenvar), [C.Arith(Add, C.Var name, rv_begin); C.Var lenvar]  				
+			ctx, prep_code @ len_code, TArray(ety, NVar lenvar), [C.Arith(Add, C.LV(C.Var name), rv_begin); C.LV(C.Var lenvar)]  				
 	| New(arrtype, e) ->  
 			let ctx1, code1, ety, erc = compile_expr ctx e in
 			let size_rv = match ety, erc with
@@ -633,15 +634,15 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 			let size_rv2 = match arrtype with AByte -> size_rv | AInt -> Leoc.Arith(Mul, size_rv, Leoc.Val 4) in
 			let k = uid () in 
 			let alen, code2, ctx2 = (match size_rv with
-				| Leoc.Val i -> NVal i, [], ctx1
-				| Leoc.Var v -> NVar v, [], ctx1
+				| C.Val i -> NVal i, [], ctx1
+				| C.LV(C.Var v) -> NVar v, [], ctx1
 				| _ -> let size_var = Printf.sprintf "array_length_%d" k in
 							 let ctx' = addvar ctx1 size_var TInt in  
-							 NVar size_var, [Leoc.DefVar size_var; Leoc.Assign(Leoc.Local size_var, size_rv)], ctx') in
+							 NVar size_var, [Leoc.DefVar size_var; Leoc.Assign(Leoc.Var size_var, size_rv)], ctx') in
 			let arr_var = Printf.sprintf "array_%d" k in
-			let alloc_code = [Leoc.DefVar arr_var; Leoc.Alloc(Leoc.Local arr_var, size_rv2)] in
+			let alloc_code = [Leoc.DefVar arr_var; Leoc.Alloc(Leoc.Var arr_var, size_rv2)] in
 			let ty = match arrtype with AInt -> TArray(TInt, alen) | AByte -> TArray(TByte, alen) in
-			ctx2, code1 @ code2 @ alloc_code, ty, [Leoc.Var arr_var; size_rv]
+			ctx2, code1 @ code2 @ alloc_code, ty, [C.LV(C.Var arr_var); size_rv]
 	| If(con, e1, e2o) -> 
 			let con_code, ccon = compile_cond ctx con in
 			let _, code1, ty1, rc1 = compile_expr ctx e1 in
@@ -657,10 +658,10 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 			let tmp_vars = List.map (fun _-> Printf.sprintf "if_res_%d" (uid())) rc2  in
 			let store rc = 
 				let rvs = Array.of_list rc in
-				List.mapi (fun i tmp -> Leoc.Assign(C.Local tmp, rvs.(i))) tmp_vars in
+				List.mapi (fun i tmp -> Leoc.Assign(C.Var tmp, rvs.(i))) tmp_vars in
 			let def_tmp_vars = List.map (fun tmp -> Leoc.DefVar tmp) tmp_vars in
 			let store1 = store rc1 and store2 = store rc2 in
-			let res = List.map (fun tmp -> Leoc.Var tmp) tmp_vars in			   
+			let res = List.map (fun tmp -> C.LV(C.Var tmp)) tmp_vars in			   
 			ctx, con_code @ def_tmp_vars @ [Leoc.If(ccon, code1 @ store1, code2 @ store2)], ty2, res			
 	| Lambda(name_list, e) ->  failwith "not expanded lambda expression"
 	| Comp code ->
