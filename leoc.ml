@@ -17,14 +17,13 @@ and statement =
 	| Comp of code
 	| Break
 	
-and lvalue = Var of name | PVar of name	| LReg of int
+and lvalue = Var of name | PVar of name	| LReg of int | PArith of oper * lvalue * rvalue
 and rvalue =
 	| Val of int
 	| LV of lvalue
 	| Arith of oper * rvalue * rvalue
 	| FCall of name * rvalue list
 	| Byte of rvalue
-	| PArith of oper * rvalue * rvalue
 
 and condition = 
 	| Less of rvalue * rvalue
@@ -40,18 +39,18 @@ let rec show_code n code =
 	
 and show_stmt n = function
 	| DefVar name -> Printf.sprintf "var %s" name
-	| Assign(lv, rv) -> Printf.sprintf "%s <- %s" (show_lvalue lv) (show_rvalue n rv)
-	| Assignb(lv, rv) -> Printf.sprintf "%s <-b- %s" (show_lvalue lv) (show_rvalue n rv)
-	| Call(name, rvs) -> Printf.sprintf "%s(%s)" name (rvs |> List.map (show_rvalue n) |> String.concat ", ")  
+	| Assign(lv, rv) -> Printf.sprintf "%s <- %s" (show_lvalue lv) (show_rvalue rv)
+	| Assignb(lv, rv) -> Printf.sprintf "%s <-b- %s" (show_lvalue lv) (show_rvalue rv)
+	| Call(name, rvs) -> Printf.sprintf "%s(%s)" name (rvs |> List.map show_rvalue |> String.concat ", ")  
 	| Defun(name, params, code) -> 
 			Printf.sprintf "fun %s(%s)\n%s\n%s\n%s" name (params |> String.concat ", ") 
 				(tab n "{") (show_code (n+1) code) (tab n "}") 
-	| Ret rvs -> Printf.sprintf "return %s" (rvs |> List.map (show_rvalue n) |> String.concat ", ")
+	| Ret rvs -> Printf.sprintf "return %s" (rvs |> List.map show_rvalue |> String.concat ", ")
 	| If(con, code1, code2) ->
 			Printf.sprintf "if %s {\n%s\n%s else {\n%s\n%s" (show_cond con) (show_code (n+1) code1) (tab n "}") (show_code (n+1) code2) (tab n "}")
 	| While(con, code) -> Printf.sprintf "while %s {\n%s\n%s" (show_cond con) (show_code (n+1) code) (tab n "}")
-	| Print rv -> Printf.sprintf "print(%s)" (show_rvalue n rv) 
-	| Alloc(lv, rv) -> Printf.sprintf "%s <- new [%s]" (show_lvalue lv) (show_rvalue n rv)
+	| Print rv -> Printf.sprintf "print(%s)" (show_rvalue rv) 
+	| Alloc(lv, rv) -> Printf.sprintf "%s <- new [%s]" (show_lvalue lv) (show_rvalue rv)
 	| Comp code -> Printf.sprintf "{\n%s\n%s" (show_code (n+1) code) (tab n "}")
 	| Break -> "break"
 
@@ -59,18 +58,18 @@ and show_lvalue = function
 	| Var name -> name 
 	| PVar name	-> "*" ^ name
 	| LReg r -> Printf.sprintf "$Reg[%d]" r
+	| PArith(op, lv1, rv2) -> Printf.sprintf "$Mem[%s %s %s]" (show_lvalue lv1) (show_op op) (show_rvalue rv2)
 
-and show_rvalue n = function
+and show_rvalue = function
 	| LV lv -> show_lvalue lv
 	| Val i -> string_of_int i
-	| Arith(op, rv1, rv2) -> Printf.sprintf "(%s %s %s)" (show_rvalue n rv1) (show_op op) (show_rvalue n rv2)
-	| FCall(name, rvs) -> Printf.sprintf "%s(%s)" name (rvs |> List.map (show_rvalue n) |> String.concat ", ")
-	| Byte rv -> Printf.sprintf "byte(%s)" (show_rvalue n rv)
-	| PArith(op, rv1, rv2) -> Printf.sprintf "$Mem[%s %s %s]" (show_rvalue n rv1) (show_op op) (show_rvalue n rv2)
+	| Arith(op, rv1, rv2) -> Printf.sprintf "(%s %s %s)" (show_rvalue rv1) (show_op op) (show_rvalue rv2)
+	| FCall(name, rvs) -> Printf.sprintf "%s(%s)" name (rvs |> List.map show_rvalue |> String.concat ", ")
+	| Byte rv -> Printf.sprintf "byte(%s)" (show_rvalue rv)	
 
 and show_cond = function
-	| Less(rv1, rv2) -> Printf.sprintf "%s < %s" (show_rvalue 0 rv1) (show_rvalue 0 rv2)
-	| Eq(rv1, rv2) -> Printf.sprintf "%s = %s" (show_rvalue 0 rv1) (show_rvalue 0 rv2)
+	| Less(rv1, rv2) -> Printf.sprintf "%s < %s" (show_rvalue rv1) (show_rvalue rv2)
+	| Eq(rv1, rv2) -> Printf.sprintf "%s = %s" (show_rvalue rv1) (show_rvalue rv2)
 	| And(con1, con2) -> Printf.sprintf "%s && %s" (show_cond con1) (show_cond con2)
 	| Or(con1, con2) -> Printf.sprintf "%s || %s" (show_cond con1) (show_cond con2)
 	| Not con -> Printf.sprintf "not (%s)" (show_cond con);;
@@ -97,7 +96,8 @@ and subst_stmt smap = function
 and subst_lvalue smap = function
 	| Var name as x -> (try M.find name smap with Not_found -> x) 
 	| PVar _ | LReg _  as x -> x
-
+  | PArith(op, lv1, rv2) -> PArith(op, subst_lvalue smap lv1, subst_rvalue smap rv2)
+	
 and subst_rvalue smap = function
 	| LV lv -> LV (subst_lvalue smap lv) 
 	(*| Var name as x -> (try M.find name smap with Not_found -> x)*) 
@@ -105,8 +105,7 @@ and subst_rvalue smap = function
 	| Arith(op, rv1, rv2) -> Arith(op, subst_rvalue smap rv1, subst_rvalue smap rv2)
 	| FCall(name, rvs) -> FCall(name, List.map (subst_rvalue smap) rvs)
 	(*| PVar name as x -> x*)
-	| Byte rv -> Byte(subst_rvalue smap rv)
-	| PArith(op, rv1, rv2) -> PArith(op, subst_rvalue smap rv1, subst_rvalue smap rv2)
+	| Byte rv -> Byte(subst_rvalue smap rv)	
 
 and subst_cond smap = function
 	| Less(rv1, rv2) -> Less(subst_rvalue smap rv1, subst_rvalue smap rv2)
@@ -121,20 +120,20 @@ let rec simp_code code = List.map simp_stmt code
 	
 and simp_stmt = function
 	| DefVar _ as x-> x
-	| Assign(lv, rv) -> Assign(lv, simp_rvalue rv)
-	| Assignb(lv, rv) -> Assignb(lv, simp_rvalue rv)
+	| Assign(lv, rv) -> Assign(simp_lvalue lv, simp_rvalue rv)
+	| Assignb(lv, rv) -> Assignb(simp_lvalue lv, simp_rvalue rv)
 	| Call(name, rvs) -> Call(name, List.map simp_rvalue rvs)  
 	| Defun(name, params, code) -> Defun(name, params, simp_code code) 
 	| Ret rvs -> Ret(List.map simp_rvalue rvs)
 	| If(con, code1, code2) -> If(simp_cond con, simp_code code1, simp_code code2)			
 	| While(con, code) -> While(simp_cond con, simp_code code)
 	| Print rv -> Print (simp_rvalue rv) 
-	| Alloc(lv, rv) -> Alloc(lv, simp_rvalue rv)
+	| Alloc(lv, rv) -> Alloc(simp_lvalue lv, simp_rvalue rv)
 	| Comp code -> Comp(simp_code code)
 	| Break as x -> x
 
 and simp_rvalue = function
-	| LV _ as x -> x 
+	| LV lv -> LV(simp_lvalue lv) 
 	| Val _ as x -> x
 	| Arith(Mul, Val a, Val b) -> Val (a * b) 
 	| Arith(Add, Val a, Val b) -> Val (a + b) 
@@ -142,25 +141,25 @@ and simp_rvalue = function
 	| Arith(Div, Val a, Val b) -> Val (a / b) 
 	| Arith(Mod, Val a, Val b) -> Val (a mod b) 
 	| Arith(Xor, Val a, Val b) -> Val (a lxor b) 
-	| Arith(Add, rv1, Val 0) -> rv1 
-	| Arith(Add, Val 0, rv2) -> rv2 
-	| Arith(Sub, rv1, Val 0) -> rv1 
-	| Arith(Mul, rv1, Val 1) -> rv1 
-	| Arith(Mul, Val 1, rv2) -> rv2 
-	| Arith(Div, rv1, Val 1) -> rv1 
-	| Arith(op, rv1, rv2) -> 
+	| Arith(Add, rv1, Val 0) -> simp_rvalue rv1 
+	| Arith(Add, Val 0, rv2) -> simp_rvalue rv2 
+	| Arith(Sub, rv1, Val 0) -> simp_rvalue rv1 
+	| Arith(Mul, rv1, Val 1) -> simp_rvalue rv1 
+	| Arith(Mul, Val 1, rv2) -> simp_rvalue rv2 
+	| Arith(Div, rv1, Val 1) -> simp_rvalue rv1 
+	| Arith(op, rv1, rv2) -> (*Arith(op, simp_rvalue rv1, simp_rvalue rv2)*) 
 			let s1 = simp_rvalue rv1 and s2 = simp_rvalue rv2 in
 			if s1 = rv1 && s2 = rv2 then Arith(op, rv1, rv2) else simp_rvalue (Arith(op, s1, s2))			
 	| FCall(name, rvs) -> FCall(name, List.map simp_rvalue rvs)
-	| Byte rv -> Byte(simp_rvalue rv)
-	| PArith(Add, LV(Var v), Val 0) -> LV(PVar v) 
-	| PArith(Add, Val 0, LV(Var v)) -> LV(PVar v) 
-	| PArith(Sub, LV(Var v), Val 0) -> LV(PVar v)
-	| PArith(Mul, LV(Var v), Val 1) -> LV(PVar v) 
-	| PArith(Mul, Val 1, LV(Var v)) -> LV(PVar v) 
-	| PArith(op, rv1, rv2) -> 
-			let s1 = simp_rvalue rv1 and s2 = simp_rvalue rv2 in
-			if s1 = rv1 && s2 = rv2 then PArith(op, rv1, rv2) else simp_rvalue (PArith(op, s1, s2))
+	| Byte rv -> Byte(simp_rvalue rv)	 
+
+and simp_lvalue = function
+	| PArith(Add, Var v, Val 0) -> PVar v 
+	| PArith(Sub, Var v, Val 0) -> PVar v
+	| PArith(op, lv1, rv2) -> 
+			let s1 = simp_lvalue lv1 and s2 = simp_rvalue rv2 in
+			if s1 = lv1 && s2 = rv2 then PArith(op, lv1, rv2) else simp_lvalue (PArith(op, s1, s2))
+	| _ as x -> x
 
 and simp_cond = function
 	| Less(rv1, rv2) -> Less(simp_rvalue rv1, simp_rvalue rv2)
@@ -172,6 +171,7 @@ and simp_cond = function
 (**************************** compile **********************************)
 
 type src = Tmp of int | TmpPnt of int | Src of Asm.src
+type dst = TmpPntDest of int | Dst of Asm.dst
 
 module S = Set.Make(struct type t = int let compare = (-) end);;
 
@@ -213,36 +213,38 @@ let rec addvar ctx name =
 			if M.mem name f.vars then failwith (Printf.sprintf "variable '%s' already defined." name);
 			let r = newregi f.regs in
 			{ f with vars = M.add name r f.vars; regs = S.add r f.regs } :: ctxs
-	| [] -> addvar [new_frame] name;;
+	| [] -> addvar [new_frame] name
 
 let getvar ctx name =
 	match ctx with
 	| f::cxs -> (try M.find name f.vars with Not_found -> failwith (Printf.sprintf "variable '%s' not found." name))
-	| [] -> failwith "empty context in getvar";; 
+	| [] -> failwith "empty context in getvar" 
 
 let addfun ctx name params retsize = 
 	match ctx with
 	| f::cxs -> { f with funs = M.add name {nparams = List.length params; return_size = retsize; params = params} f.funs } :: cxs
-	| [] -> failwith "empty context in addfun";; 
+	| [] -> failwith "empty context in addfun" 
 
-let getfun ctx name = try M.find name (List.hd ctx).funs with Not_found -> failwith ("function not found: "^name);;
+let getfun ctx name = try M.find name (List.hd ctx).funs with Not_found -> failwith ("function not found: "^name)
 
-let use_src ctx = function Tmp r -> freereg r ctx, Asm.Reg r | TmpPnt r -> freereg r ctx, Asm.Pnt r | Src s -> ctx, s;;
-let strip_src = function Tmp r -> Asm.Reg r | TmpPnt r -> Asm.Pnt r | Src s -> s;;
-let strip_dst ctx = function 
-	| Var name  -> Asm.RegDest (getvar ctx name)
-	| PVar name -> Asm.PntDest (getvar ctx name)
-	| LReg r -> Asm.RegDest r;;
+let use_src ctx = function Tmp r -> freereg r ctx, Asm.Reg r | TmpPnt r -> freereg r ctx, Asm.Pnt r | Src s -> ctx, s
+let strip_src = function Tmp r -> Asm.Reg r | TmpPnt r -> Asm.Pnt r | Src s -> s
+
+let use_dst ctx = function TmpPntDest r -> freereg r ctx, Asm.PntDest r | Dst d -> ctx, d
+let strip_dst = function TmpPntDest r -> Asm.RegDest r | Dst d -> d
 
 let used_params ctx rv =
-	let rec gather lst = function
-		| LV(Var name) | LV(PVar name) -> if getvar ctx name < 0 then name::lst else lst
-		| LV(LReg _) -> failwith "LReg in rvalue"
+	let rec gather_rv lst = function
+		| LV lv -> gather_lv lst lv
 		| Val _ -> lst
-		| Arith(op, rv1, rv2) | PArith(op, rv1, rv2) -> gather (gather lst rv1) rv2  
-		| FCall(name, rvals) -> rvals |> List.fold_left gather lst 
-		| Byte x -> gather lst x	in
-	gather [] rv;;
+		| Arith(op, rv1, rv2) -> gather_rv (gather_rv lst rv1) rv2		   
+		| FCall(name, rvals) -> rvals |> List.fold_left gather_rv lst 
+		| Byte x -> gather_rv lst x	
+	and gather_lv lst = function
+		| Var name | PVar name -> if getvar ctx name < 0 then name::lst else lst
+		| PArith(op, lv1, rv2) -> gather_rv (gather_lv lst lv1) rv2
+		| LReg _ -> lst in
+	gather_rv [] rv;;
 
 let rec calc_retsize name code =
 	let update sz = function
@@ -267,7 +269,8 @@ let rec compile_code ctx prg =
 	ctx', List.rev ccode |> List.concat
 	
 and compile prg = 
-	try compile_code [new_frame] prg |> snd
+	let frm = { new_frame with vars = M.add "args" 0 new_frame.vars; regs = S.add 0 new_frame.regs } in
+	try compile_code [frm] prg |> snd
 	with Failure s -> Printf.printf "LeoC error: %s\n" s; []
 
 and compile_stmt ctx = function
@@ -286,19 +289,21 @@ and compile_stmt ctx = function
 			ctx, [Triasm.While(ccond, ccode)]
 	| Comp code -> let _, ccode = compile_code ctx code in ctx, ccode
 	| Assign(lv, rv) ->
-			let code, src, ctx1 = compile_rvalue ctx rv in			
-			let adst = strip_dst ctx lv in				
-			(match List.rev code, src with
-			| Triasm.Arith(op, d, a1, a2) :: rest, Tmp r ->
-					freereg r ctx1, List.rev (Triasm.Arith(op, adst, a1, a2) :: rest)
+			let code1, dst, ctx1 = compile_lvalue ctx lv in
+			let code2, src, ctx2 = compile_rvalue ctx1 rv in			
+			let ctx3, adst = use_dst ctx2 dst in				
+			(match List.rev code2, src with
+			| Triasm.Arith(op, d, a1, a2) :: rest, Tmp r ->				
+					freereg r ctx3, code1 @ (List.rev (Triasm.Arith(op, adst, a1, a2) :: rest))
 			| _, _ -> 
-					let ctx2, asrc = use_src ctx1 src in
-					ctx2, code @ [T.Mov(adst, asrc)])
+					let ctx4, asrc = use_src ctx3 src in
+					ctx4, code1 @ code2 @ [T.Mov(adst, asrc)])
 	| Assignb(lv, rv) ->
-			let code, src, ctx1 = compile_rvalue ctx rv in			
-			let adst = strip_dst ctx lv in				
-			let ctx2, asrc = use_src ctx1 src in
-			ctx2, code @ [T.Movb(adst, asrc)]
+			let code1, dst, ctx1 = compile_lvalue ctx lv in
+			let code2, src, ctx2 = compile_rvalue ctx1 rv in			
+			let ctx3, adst = use_dst ctx2 dst in				
+			let ctx4, asrc = use_src ctx3 src in
+			ctx4, code1 @ code2 @ [T.Movb(adst, asrc)]
 	| Defun(name, params, code) ->
 			let nparams = List.length params in
 			let retsize = Option.default 0 (calc_retsize name code) in
@@ -349,10 +354,11 @@ and compile_stmt ctx = function
 			let ctx2 = Enum.init fi.return_size ((+) r) |> Enum.fold freereg ctx in
 			ctx2, code	
 	| Alloc(lv, rv) ->
-			let code, src, ctx1 = compile_rvalue ctx rv in			
-			let adst = strip_dst ctx lv in				
-			let ctx2, asrc = use_src ctx1 src in
-			ctx2, code @ [T.New(adst, asrc)]		
+			let code1, dst, ctx1 = compile_lvalue ctx lv in
+			let code2, src, ctx2 = compile_rvalue ctx1 rv in			
+			let ctx3, adst = use_dst ctx2 dst in				
+			let ctx4, asrc = use_src ctx3 src in
+			ctx4, code1 @ code2 @ [T.New(adst, asrc)]		
 	| Break -> ctx, [Triasm.Break]			
 	
 and compile_call ctx name rvs =
@@ -371,9 +377,13 @@ and compile_call ctx name rvs =
 	
 and compile_rvalue ctx = function
 	| LV(Var name) -> [], Src(Asm.Reg (getvar ctx name)), ctx
-	| Val n -> [], Src(Asm.Val n), ctx
 	| LV(PVar name) -> [], Src(Asm.Pnt (getvar ctx name)), ctx
 	| LV(LReg _) -> failwith "LReg in rvalue"
+	| LV(PArith(op, lv1, rv2)) ->
+			let code, src, ctx1 = compile_rvalue ctx (Arith(op, LV lv1, rv2)) in
+			let src1 = match src with Tmp r -> TmpPnt r | _ -> failwith "wrong src type for PArith" in
+			code, src1, ctx1				
+	| Val n -> [], Src(Asm.Val n), ctx
 	| Arith(op, rv1, rv2) -> 
 			let code1, src1, ctx1 = compile_rvalue ctx rv1 in
 			let code2, src2, ctx2 = compile_rvalue ctx1 rv2 in
@@ -387,10 +397,15 @@ and compile_rvalue ctx = function
 			let code, src, ctx2 = compile_rvalue ctx1 rv in
 			let ctx3, asrc = use_src ctx2 src in
 			code @ [Triasm.Mov(Asm.RegDest r, Asm.Val 0); Triasm.Movb(Asm.RegDest r, asrc)], Tmp r, ctx3
-	| PArith(op, rv1, rv2) ->
-		 	let code, src, ctx1 = compile_rvalue ctx (Arith(op, rv1, rv2)) in
-			let src1 = match src with Tmp r -> TmpPnt r | _ -> failwith "wrong src type for PArith" in
-			code, src1, ctx1			
+	
+and compile_lvalue ctx = function 
+	| Var name  -> [], Dst(Asm.RegDest (getvar ctx name)), ctx
+	| PVar name -> [], Dst(Asm.PntDest (getvar ctx name)), ctx
+	| LReg r -> [], Dst(Asm.RegDest r), ctx
+	| PArith(op, lv1, rv2) ->			
+		 	let code, src, ctx1 = compile_rvalue ctx (Arith(op, LV lv1, rv2)) in
+			let dst = match src with Tmp r -> TmpPntDest r | _ -> failwith "wrong src type for PArith" in
+			code, dst, ctx1				
 	
 and compile_cond ctx = function
 	| Less(rv1, rv2) ->
@@ -421,7 +436,7 @@ let prg = [
 		Assign(Var "i", Val 0);
 		Assign(Var "sum", Val 0);
 		While(Less(LV(Var "i"), LV(Var "len")), [
-			Assign(Var "sum", Arith(Add, LV(Var "sum"), Byte( PArith(Add, LV(Var "arr"), LV(Var "i") ) ) ));
+			Assign(Var "sum", Arith(Add, LV(Var "sum"), Byte( LV(PArith(Add, Var "arr", LV(Var "i") ) )) ));
 			Assign(Var "i", Arith(Add, LV(Var "i"), Val 1))
 		]);
 		Ret [ LV(Var "sum") ]

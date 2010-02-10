@@ -40,6 +40,7 @@ let dst_pr = function RegDest _ -> 'R' | PntDest _ -> 'P';;
 let src_pr = function Reg _ -> 'R' | Pnt _ -> 'P' | Val _ -> 'V';;
 let dst_n = function RegDest n | PntDest n -> n;;
 let src_n = function Reg n | Pnt n | Val n -> n;;
+let dst_of_src = function Reg r -> RegDest r | Pnt r -> PntDest r | Val _ -> failwith "Val in Asm.dst_of_src";;
 
 let oper_s = function
 	| Add->"ADD" | Mul->"MUL" | Mod->"MOD" | Div->"DIV" | Sub->"SUB" | Xor->"XOR";;

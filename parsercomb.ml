@@ -73,23 +73,23 @@ let p_int s =
 let p_str str =
 	String.fold_left (fun p c -> p >>> p_char c) (return '!') str;;
 
-let rec p_seq prs = (* sequence of something *)
+let rec p_seq prs = (* a+, sequence of something *)
 	prs >>= fun x ->
 	p_opt [x] (p_seq prs >>= fun lst -> return (x::lst));;
 
-let p_seq0 prs = p_opt [] (p_seq prs);;
+let p_seq0 prs = p_opt [] (p_seq prs);; (* a*, *)
 
-let rec p_list prs psep = (* list of something, separated by given separator parser *)
+let rec p_list prs psep = (* a+, list of something, separated by given separator parser *)
 	prs >>= fun x ->
 	p_opt [x] (psep >>> p_list prs psep >>= fun lst -> return (x::lst));;
 
-let p_list0 prs psep = p_opt [] (p_list prs psep);; 
+let p_list0 prs psep = p_opt [] (p_list prs psep);; (* a* *)
 
-let rec p_listch prs sep = (* list of something, separated by given char *)
+let rec p_listch prs sep = (* a+, list of something, separated by given char *)
 	prs >>= fun x ->
 	p_opt [x] (p_char sep >>> p_listch prs sep >>= fun lst -> return (x::lst));;
 
-let p_intlist = p_listch p_int;;
+let p_intlist = p_listch p_int;; 
 
 let p_void prs s = 
 	match prs s with

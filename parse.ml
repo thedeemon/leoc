@@ -37,7 +37,7 @@ let int_ = function
 	| TT(Lint i, _,_,_,_) :: ts -> log (string_of_int i); Parsed(i, ts)
 	| _ -> Failed
  			
-let params = tok Llparen >>> p_list ident (tok Lcomma) >>= fun ps -> tok Lrparen >>> return ps
+let params = tok Llparen >>> p_list0 ident (tok Lcomma) >>= fun ps -> tok Lrparen >>> return ps
 let opt_params = p_opt [] params 			
 
 let rec (prepare : Tokens.token list -> ttoken list) = fun tok_list ->
@@ -68,18 +68,26 @@ and expr = function h::tl -> Lazy.force (get2 h) | [] -> Failed
 	
 and expr_r s = (
 	log "expr";
-		  (product >>= fun e1 -> tok Lplus >>> expr >>= fun e2 -> return (Leo.Arith(Add, e1, e2)))
-	||| (product >>= fun e1 -> tok Lminus >>> expr >>= fun e2 -> return (Leo.Arith(Sub, e1, e2)))
-	|||  product
+	product >>= fun e1 ->	p_seq0 
+		((tok Lplus >>> product >>= fun e2 -> return (Add, e2)) ||| 
+		 (tok Lminus >>> product >>= fun e2 -> return (Sub, e2))) 
+	  >>= fun ps -> return (List.fold_left (fun e1 (op, e2) -> Leo.Arith(op, e1, e2)) e1 ps)
 	) s
 
 and product s = (
 	log "product";
-		  (value >>= fun e1 -> tok Lmul >>> product >>= fun e2 -> return (Leo.Arith(Mul, e1, e2)))
+	value >>= fun e1 -> p_seq0
+		((tok Lmul >>> value >>= fun e2 -> return (Mul, e2))|||
+		 (tok Ldiv >>> value >>= fun e2 -> return (Div, e2))|||
+     (tok Lmod >>> value >>= fun e2 -> return (Mod, e2))|||		
+     (tok Lxor >>> value >>= fun e2 -> return (Xor, e2)))		
+	  >>= fun ps -> return (List.fold_left (fun e1 (op, e2) -> Leo.Arith(op, e1, e2)) e1 ps)
+			
+(*		  (value >>= fun e1 -> tok Lmul >>> product >>= fun e2 -> return (Leo.Arith(Mul, e1, e2)))
 	||| (value >>= fun e1 -> tok Ldiv >>> product >>= fun e2 -> return (Leo.Arith(Div, e1, e2)))
 	||| (value >>= fun e1 -> tok Lmod >>> product >>= fun e2 -> return (Leo.Arith(Mod, e1, e2)))
 	||| (value >>= fun e1 -> tok Lxor >>> product >>= fun e2 -> return (Leo.Arith(Xor, e1, e2)))
-	||| value
+	||| value*)
 	) s
 			
 and value s = (
@@ -100,12 +108,12 @@ and stmt_r s = (
 				p_list field_def terms >>= fun flds -> opt_terms >>> tok Lrcurly >>>
 					return (Leo.Typedef(tname, flds))	)
 	||| (ident >>= fun name -> opt_params >>= fun ps -> tok Leq >>> opt_terms >>>
-				expr >>= fun e1 -> tok Ldot2 >>> expr >>= fun e2 -> return (Leo.Def(name, ps, Leo.Seq(Leo.SRange(e1,e2)))))
+				expr >>= fun e1 -> tok Ldot2 >>> expr >>= fun e2 -> return (Leo.Def(name, ps, Leo.Range(e1,e2))))
 	||| (ident >>= fun name -> opt_params >>= fun ps -> tok Leq >>> opt_terms >>>
 				(expr ||| (stmt >>= fun st -> return (Leo.Comp[st]))) >>= fun e -> return (Leo.Def(name, ps, e)))
 	||| (ident >>= fun vname -> tok Lcolon >>> ident >>= fun tname -> return (Leo.Typing(vname, tname)))
 	||| (lvalue >>= fun lv -> tok Lwrite >>> expr >>= fun e1 -> tok Ldot2 >>> expr >>= fun e2 ->  
-				return (Leo.Write(lv, Leo.Seq(Leo.SRange(e1,e2)))))
+				return (Leo.Write(lv, Leo.Range(e1,e2))))
 	||| (lvalue >>= fun lv -> tok Lwrite >>> expr >>= fun e -> return (Leo.Write(lv, e)))
 	||| (expr >>= fun e -> return (Leo.Expr e))
 	) s			
@@ -113,21 +121,23 @@ and stmt_r s = (
 and lvalue = function h::tl -> Lazy.force (get4 h) | [] -> Failed		
 and lvalue_r s = (
 	log "lvalue";
-	    (ident >>= fun name -> tok Llbracket >>> expr >>= fun e -> tok Lrbracket >>> return (Leo.ArrElt(name, e)))
-	||| (ident >>= fun name -> tok Llbracket >>> seq >>= fun sq -> tok Lrbracket >>> return (Leo.SubArr(name, sq)))
-	||| (ident >>= fun name -> return (Leo.Var name))	
+	    (path >>= fun p -> tok Llbracket >>> expr >>= fun e -> tok Lrbracket >>> return (Leo.ArrElt(p, e)))
+	||| (path >>= fun p -> tok Llbracket >>> seq >>= fun sq -> tok Lrbracket >>> return (Leo.ArrElt(p, sq)))
+	||| (path >>= fun p -> return (Leo.Var p))	
 	) s			
+			
+and path = p_list ident (tok Ldot) >>= fun ns -> return (List.hd ns, List.tl ns) 		
 			
 and seq s = (
 	log "seq";
-	(expr >>= fun e1 -> tok Ldot2 >>> expr >>= fun e2 -> return (Leo.SRange(e1, e2)))
-	||| (expr >>= fun e1 -> tok Lrange >>> return (Leo.SRange(Leo.Val 0, Leo.Arith(Sub, Leo.Length e1, Leo.Val 1))))
-	||| (ident >>= fun name -> return (Leo.SVal name))
+	(expr >>= fun e1 -> tok Ldot2 >>> expr >>= fun e2 -> return (Leo.Range(e1, e2)))
+	||| (expr >>= fun e1 -> tok Lrange >>> return (Leo.Range(Leo.Val 0, Leo.Arith(Sub, Leo.Length e1, Leo.Val 1))))
+	||| (path >>= fun p -> return (Leo.LV(Leo.Var p)))
 	) s			
 	
 and range s =
 	log "range";
-	(expr >>= fun e1 -> tok Ldot2 >>> expr >>= fun e2 -> return (Leo.Seq(Leo.SRange(e1, e2)))) s 
+	(expr >>= fun e1 -> tok Ldot2 >>> expr >>= fun e2 -> return (Leo.Range(e1, e2))) s 
 	
 and name_seq s =
 	log "name_seq";

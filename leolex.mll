@@ -25,6 +25,7 @@ rule lexer = parse
  | "&&"                  { Land }
  | "||"                  { Lor }
  | ".."                  { Ldot2 }
+ | '.'                   { Ldot }
  | '{'                   { Llcurly }
  | '}'                   { Lrcurly }
  | '#' [^ '\n']*         { Lrem }

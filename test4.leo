@@ -1,21 +1,23 @@
-sum_loop(sum, xs) = if |xs| > 0 then sum_loop(sum + xs.head, xs.tail) else sum
-sum_loop(0, 1..10)
-arr = new int[5]
-sum_loop(0, arr)
-
-type point = { x : int; y : int }
-
-type point_list = {
- p : point
- next : point_list
-}
-
-type rec = {
+type indata = {
  len : int
- chars : byte[len]
- ints : int[len]
- a : int[55]
+ str : byte[len]
+ ints : int[10]
+ par : int
+ outstr : byte[len]
 }
  
-args : rec
-zzz: point
+args : indata
+
+print(args.len)
+print(args.par)
+
+for i in args.ints.range
+ args.ints[i] <- i+1
+end
+
+for i in args.str.range
+ args.outstr[i] <- args.str[|args.str| - 1 - i]
+end
+
+x = 20/5/4
+
