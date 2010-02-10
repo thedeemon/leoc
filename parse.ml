@@ -82,12 +82,6 @@ and product s = (
      (tok Lmod >>> value >>= fun e2 -> return (Mod, e2))|||		
      (tok Lxor >>> value >>= fun e2 -> return (Xor, e2)))		
 	  >>= fun ps -> return (List.fold_left (fun e1 (op, e2) -> Leo.Arith(op, e1, e2)) e1 ps)
-			
-(*		  (value >>= fun e1 -> tok Lmul >>> product >>= fun e2 -> return (Leo.Arith(Mul, e1, e2)))
-	||| (value >>= fun e1 -> tok Ldiv >>> product >>= fun e2 -> return (Leo.Arith(Div, e1, e2)))
-	||| (value >>= fun e1 -> tok Lmod >>> product >>= fun e2 -> return (Leo.Arith(Mod, e1, e2)))
-	||| (value >>= fun e1 -> tok Lxor >>> product >>= fun e2 -> return (Leo.Arith(Xor, e1, e2)))
-	||| value*)
 	) s
 			
 and value s = (

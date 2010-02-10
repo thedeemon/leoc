@@ -36,11 +36,6 @@ and expr =
 and lvalue = 
 	| Var of path
 	| ArrElt of path * expr
-(*	| SubArr of path * seq*)
-
-(*and seq = 
-	| SRange of expr * expr
-	| SVal of path*)
 
 and condition = 
 	| Less of expr * expr
@@ -90,10 +85,6 @@ and show_expr n = function
 	| Comp code -> if List.length code > 1 then Printf.sprintf "{\n%s\n%s}" (show_code (n+1) code) (tab n "")
 									else show_code (n+1) code 
 
-(*and show_seq = function
-	| SRange(e1, e2) -> Printf.sprintf "%s..%s" (show_expr 0 e1) (show_expr 0 e2)
-	| SVal path -> show_path path*)
-
 and show_cond n = function
 	| Less(e1, e2) -> Printf.sprintf "%s < %s" (show_expr n e1) (show_expr n e2)
 	| Eq(e1, e2) -> Printf.sprintf "%s = %s" (show_expr n e1) (show_expr n e2)
@@ -107,7 +98,6 @@ and show_path (name, fields) =
 and show_lvalue = function
 	| Var path -> show_path path
 	| ArrElt(path, e) -> Printf.sprintf "%s[%s]" (show_path path) (show_expr 0 e)
-	(*| SubArr(path, seq) -> Printf.sprintf "%s[%s]" (show_path path) (show_seq seq)*)
 
 and show_ftype = function
 	| FInt -> "int" | FStruct nm -> nm | FArray(aty, n) -> Printf.sprintf "%s[%s]" (show_atype aty) (show_num n)
@@ -144,14 +134,9 @@ and stmt_uses_fun funname = function
 	| For(name_seq_list, code) -> (List.exists (snd >> is_recursive funname) name_seq_list) || (List.exists (stmt_uses_fun funname) code)
 	| Typedef _ | Typing _ -> false
 
-(*and seq_uses_fun funname = function 
-	| SVal _ -> false 
-	| SRange(e1, e2) -> (is_recursive funname e1) || (is_recursive funname e2)*)		
-
 and lvalue_uses_fun funname = function
 	| Var (name, _) -> name = funname
 	| ArrElt(_, e) -> is_recursive funname e
-	(*| SubArr(_, seq) -> seq_uses_fun funname seq*)
 				
 (*********************** expand ************************************)		
 
@@ -195,11 +180,6 @@ and expand_stmt ctx = function
 and expand_lvalue ctx = function
 	| Var _ as x -> x
 	| ArrElt(name, e) -> ArrElt(name, expand_expr ctx e)
-	(*| SubArr(name, seq) -> SubArr(name, expand_seq ctx seq)*)
-
-(*and expand_seq ctx = function
-	| SVal _ as x -> x 
-	| SRange(e1, e2) -> SRange(expand_expr ctx e1, expand_expr ctx e2)*)
 
 and expand_expr ctx = function
 	| Val i as x -> x
@@ -225,7 +205,7 @@ and expand_con ctx = function
 and argval k (argname, argexp) =
 	let var = Printf.sprintf "%s_%d" argname k in 
 	match argexp with
-	| Val _ | LV(Var _)	| (*LV(SubArr _)*) Range _ -> argexp, None 
+	| Val _ | LV(Var _)	| Range _ -> argexp, None 
 	| Arith _ | Call _ | LV(ArrElt _) | Length _ | Head _ | Tail _  | New _ | If _ | Comp _ -> mkvar var, Some(Def(var, [], argexp))
 	| Lambda(name_list, e) -> mkvar var, Some(Def(var, name_list, e)) 
 
@@ -261,11 +241,6 @@ and subst_expr subs_map k = function
 	| Lambda(name_list, e) -> Lambda(name_list, subst_expr subs_map k e) 
 	| Comp code -> Comp(subst_code subs_map k code)	
 	
-(*and subst_seq subs_map k = function
-	| SVal path -> (try (match M.find (pathname path) subs_map with Seq s -> s | LV(Var path) -> SVal  path | _ -> SVal path) 
-									with Not_found -> SVal(mkpath (rename subs_map (pathname path)) [])) 
-	| SRange(e1, e2) -> SRange(subst_expr subs_map k e1, subst_expr subs_map k e2)*)
-	
 and subst_con subs_map k = function
 	| Less(e1, e2) -> Less(subst_expr subs_map k e1, subst_expr subs_map k e2)
 	| Eq(e1, e2) -> Eq(subst_expr subs_map k e1, subst_expr subs_map k e2)
@@ -294,9 +269,8 @@ and subst_stmt subs k = function
 	| (Typedef _ as x) | (Typing _ as x) -> subs, x
 			
 and subst_lvalue_expr subs k = function
-	| Var path as x -> (try M.find (pathname path) subs with Not_found -> LV x) (*Var(rename subs name)*)
+	| Var path as x -> (try M.find (pathname path) subs with Not_found -> LV x) 
 	| ArrElt(path, e) -> LV (ArrElt(mkpath (rename subs (pathname path)) (pathflds path), subst_expr subs k e))
-	(*| SubArr(path, seq) -> LV (SubArr(mkpath (rename subs (pathname path)) (pathflds path), subst_seq subs k seq))*)
 
 and subst_lvalue subs k lv = 
 	match subst_lvalue_expr subs k lv with
@@ -359,8 +333,6 @@ let rec returnize = function
 											| _ -> x)
 	| e -> Comp [Ret e]  	
 	
-(*let seq_of_expr = function LV(Var pt) -> SVal pt | Seq s -> s | _ -> failwith "strange range"*) 	
-	
 let rec compile_path ctx (name, flds) =
 	Printf.printf "compile_path %s\n" (show_path (name, flds));
 	let rec loop lv ty fields lfields =
@@ -391,12 +363,7 @@ let rec compile_path ctx (name, flds) =
 			  		loop lv1 vty fs (fld::lfields) in		
 	loop (C.Var name) (gettype ctx name) flds []							
 
-and rv_of_num ctx = function 
-	| NVal i -> C.Val i 
-	| NVar nm -> C.LV(C.Var nm) 
-(*		match compile_path ctx pt with
-		| TInt, [rv] -> rv
-		| _, _ -> failwith "bad type in num"*)
+and rv_of_num ctx = function NVal i -> C.Val i	| NVar nm -> C.LV(C.Var nm) 
 
 and num_of_rv ctx = function
 	| C.Val i -> ctx, [], NVal i
@@ -433,25 +400,6 @@ and compile_lvalue ctx = function
 			else	  
 				let lv_res = Leoc.PArith(Add, lv, Leoc.Arith(Mul, idx_rv, Leoc.Val elt_size)) in					
 				ctx2, code1 @ code2, aty, [C.LV lv_res]
-	(*| SubArr(path, seq) -> 
-			let prep_code, rv1, rv2 = match seq with 
-				| SRange(e1, e2) -> 
-						let _, code1, ty1, rc1 = compile_expr ctx e1 in
-						let _, code2, ty2, rc2 = compile_expr ctx e2 in
-						code1 @ code2, List.hd rc1, List.hd rc2 
-				| SVal spath ->
-						let sty, src = compile_path ctx spath in
-						(match sty with
-						| TRange(n1, n2) -> [], rv_of_num ctx n1, rv_of_num ctx n2 
-						| _ -> failwith ((show_path path)^": subarray argument must be a range")) in
-			let pty, prc = compile_path ctx path in
-			let elt_size, ety = match pty with
-				| TArray(aty, alen) -> (match aty with TInt->4 | TByte->1 | _->failwith "bad array type"), aty
-				| _ -> failwith ((show_path path) ^ " is not an array") in
-			let lenvar = Printf.sprintf "arr_len_%d" (uid()) in
-			let len_code = [C.DefVar lenvar; C.Assign(C.Var lenvar, C.Arith(Add, C.Arith(Sub, rv2, rv1), C.Val 1))] in
-			let rv_begin = C.Arith(Mul, rv1, C.Val elt_size)  in
-			prep_code @ len_code, TArray(ety, NVar(mkpath lenvar [])), [C.Arith(Add, List.hd prc, rv_begin); C.LV(C.Var lenvar)]*)  				
 	
 and compile_stmt ctx = function
 	| Def(name, [], If(con, e1, e2o)) ->
@@ -495,78 +443,6 @@ and compile_stmt ctx = function
 				| _, _, _, _ -> failwith (Printf.sprintf "wrong types in assignment %s: %s and %s" 
 																	(show_stmt 0 orgst) (show_type lty) (show_type ty)) in
 			ctx, Code(code1 @ code2 @ code3)														
-			(*(match lv with
-			| Var path -> 
-					let lty, lv = compile_path ctx path in
-					let ctx1, code1, ty, rc = compile_expr ctx e in					
-					let code2 =	(match lty, ty, rc with
-						| TInt, TInt, [rv] ->  [Leoc.Assign(Leoc.Var name, rv)]
-						| TInt, TByte, [rv] ->  [Leoc.Assign(Leoc.Var name, Leoc.Byte rv)]
-						| TByte, TByte, [rv] 
-						| TByte, TInt, [rv] -> [Leoc.Assignb(Leoc.Var name, rv)]
-						| TArray(laty, lalen), TArray(aty, alen), [rva; rvlen] ->
-								let name2 = match rva with C.LV(C.Var v) -> v | _ -> failwith "bad array in array copy" in
-								let k = uid () in
-								let ivar = Printf.sprintf "i_%d" k and jvar = Printf.sprintf "j_%d" k in
-								let st = For([ivar, SVal name; jvar, SVal name2], [
-													Write(Var ivar, LV(Var jvar))   
-												 ]) in
-								(match compile_stmt ctx st with _, Code code' -> code' | _, _ -> failwith "bad result of array copy compilation")
-						| TArray(laty, lalen), TRange(n1, n2), [rv_beg; rv_end] ->
-								let k = uid () in
-								let ivar = Printf.sprintf "i_%d" k and jvar = Printf.sprintf "j_%d" k in
-								let st = For([ivar, SVal name; jvar, seq_of_expr e], [
-													Write(Var ivar, LV(Var jvar))   
-												 ]) in
-								(match compile_stmt ctx st with _, Code code' -> code' | _, _ -> failwith "bad result of array copy compilation")																	
-						| TRange _, _, _ -> failwith ("writing to range var is not supported: "^ name)
-						| _, _, _ -> failwith (Printf.sprintf "type mismatch in '%s': %s and %s" (show_stmt 1 orgst) (show_type lty) (show_type ty)))
-						in
-					ctx1, Code(code1 @ code2) 
-			| ArrElt(path, ie) -> 
-					let lty = gettype ctx name in
-					let ctx1, code1, ity, irc = compile_expr ctx ie in					
-					let is_idx_range = match ity with TRange _ -> true | _ -> false in
-					if is_idx_range then 
-						compile_stmt ctx (Write(SubArr(name, seq_of_expr ie), e)) 
-					else						
-						let ctx2, code2, ty, rc = compile_expr ctx1 e in
-						let idx_rv0 = (match ity, irc with
-							| TInt, [rv] -> rv
-							| TByte, [rv] -> Leoc.Byte rv 
-							| _, _ -> failwith ("bad index type for "^name)) in
-						let idx_rv = (match lty with
-							| TArray(TByte, _) -> idx_rv0
-							| TArray(TInt, _) -> Leoc.Arith(Mul, idx_rv0, Leoc.Val 4)
-							| _ -> failwith ("bad array type for "^name)) in
-						let pnt_var = Printf.sprintf "pnt_%d" (uid()) in
-						let code_prep = [C.DefVar pnt_var; C.Assign(C.Var pnt_var, C.Arith(Add, C.LV(C.Var name), idx_rv))] in
-						let code3 =	(match lty, ty, rc with
-							| TArray(TInt, _), TInt, [rv]  -> [C.Assign(C.PVar pnt_var, rv)]
-							| TArray(TInt, _), TByte, [rv] -> [C.Assign(C.PVar pnt_var, Leoc.Byte rv)]
-							| TArray(TByte, _), TInt, [rv]   
-							| TArray(TByte, _), TByte, [rv] -> [C.Assignb(C.PVar pnt_var, rv)]  
-							| _, _, _ -> failwith (Printf.sprintf "type mismatch in '%s': %s and %s" (show_stmt 1 orgst) (show_type lty) (show_type ty))) in
-						ctx, Code (code1 @ code2 @ [Leoc.Comp(code_prep @ code3)])
-			| SubArr(path, seq) ->
-					let k = uid () in
-					let ivar = Printf.sprintf "i_%d" k and jvar = Printf.sprintf "j_%d" k in			
-					let st = match e with
-						| LV(SubArr(arr, aseq)) -> For([ivar,seq; jvar,aseq], 
-																				[Write(ArrElt(name, LV(Var ivar)), LV(ArrElt(arr, LV(Var jvar))))])
-						| Seq aseq -> For([ivar,seq; jvar,aseq], [Write(ArrElt(name, LV(Var ivar)), LV(Var jvar))])
-						| LV(Var m) ->
-								(match gettype ctx m with
-								| TVoid -> failwith ("writing void expression to "^name)
-								| TInt | TByte -> For([ivar, seq], [Write(ArrElt(name, LV(Var ivar)), e)])
-								| TRange _ | TArray _ ->  For([ivar, seq; jvar, SVal m], [Write(ArrElt(name, LV(Var ivar)), LV(Var jvar))]))
-						| LV(ArrElt(rname, ie)) ->
-								let _, _, iety, _ = compile_expr ctx ie in
-								(match iety with
-									| TRange _ -> Write(lv, LV(SubArr(rname, seq_of_expr ie)))
-									| _ -> For([ivar, seq], [Write(ArrElt(name, LV(Var ivar)), e)]))
-						| _ -> For([ivar, seq], [Write(ArrElt(name, LV(Var ivar)), e)]) in
-					compile_stmt ctx st )*)
 	| Print e -> 
 			let _, code, ty, rc = compile_expr ctx e in
 			(match ty, rc with
@@ -605,57 +481,6 @@ and compile_stmt ctx = function
 			let ccode1 = Leoc.subst_code subs_map ccode in
 			let all_code = def_code @ init_code @ [Leoc.While(cond, ccode1 @ next_code)] in
 			ctx, Code [Leoc.Comp all_code] 
-
-			 
-			(*let org_names, seqs = List.split name_seq_list in
-			let names, end_names = List.map (fun s-> mkname s, mkend s) org_names |> List.split in
-			let def_code = List.map2 (fun inm ienm -> [Leoc.DefVar inm; Leoc.DefVar ienm]) names end_names |> List.concat in
-			let cseqs = List.map compile_expr ctx seqs |> List.fold_right (fun 
-			
-			
-			
-			let seq_type = function
-				| Range _ -> TInt, false
-				| SVal name -> match gettype ctx name with
-					| TRange _ -> TInt, false
-					| TArray(vtype, _) -> vtype, true
-					| _ -> failwith (name ^ "is not a sequence") in
-			let elt_types, elt_pointers = List.map seq_type seqs |> List.split in
-			let ctx1 = List.fold_left2 addvar ctx org_names elt_types in
-			let init_codes, deltas = List.map (fun (name,seq) ->
-				(match seq with
-				| SRange(e1, e2) -> 
-						let _, e1code, _, rc1 = compile_expr ctx e1 in
-						let _, e2code, _, rc2 = compile_expr ctx (Arith(Add, e2, Val 1)) in
-						e1code @ e2code @ 
-						[Leoc.Assign(Leoc.Var (mkname name), List.hd rc1); 
-						 Leoc.Assign(Leoc.Var (mkend name), List.hd rc2)], 1
-				| SVal sname ->
-						match gettype ctx sname with
-						| TRange(n1, n2) -> [Leoc.Assign(Leoc.Var (mkname name), rv_of_num n1); 
-								Leoc.Assign(Leoc.Var (mkend name), Leoc.Arith(Add, rv_of_num n2, C.Val 1))], 1
-						| TArray(aty, alen) ->
-								let rv_len = rv_of_num alen in
-								let rv_end, delta = match aty with
-									| TByte -> C.Arith(Add, C.LV(C.Var sname), rv_len), 1
-									| TInt -> C.Arith(Add, C.LV(C.Var sname), C.Arith(Mul, rv_len, C.Val 4)), 4
-									| _ -> failwith "bad array type in seq" in 
-								[C.Assign(C.Var (mkname name), C.LV(C.Var sname));
-						  	 C.Assign(C.Var (mkend name), rv_end)], delta
-						| _ -> failwith "value of wrong type in seq")) name_seq_list |> List.split in
-			let init_code = List.concat init_codes in  
-			let conds = org_names |> List.map (fun s -> Leoc.Less(C.LV(C.Var (mkname s)), C.LV(C.Var (mkend s)))) in 
-			let cond = List.fold_left (fun con cmp -> Leoc.And(con, cmp)) (List.hd conds) (List.tl conds) in
-			let next_code = List.map2 (fun inm delta -> 
-				Leoc.Assign(Leoc.Var inm, C.Arith(Add, C.LV(C.Var inm), C.Val delta))) names deltas in
-			let _, ccode = compile_code ctx1 code in
-			let subs = List.map2 (fun orgname is_pnt ->
-									let s = mkname orgname in
-									if is_pnt then orgname, C.PVar s else orgname, C.Var s) org_names elt_pointers in
-			let subs_map = List.fold_left (fun m (orgname, lv) ->	M.add orgname lv m) M.empty subs in
-			let ccode1 = Leoc.subst_code subs_map ccode in
-			let all_code = def_code @ init_code @ [Leoc.While(cond, ccode1 @ next_code)] in
-			ctx, Code [Leoc.Comp all_code] *)
 	| Ret e ->
 			let _, code, ty, rc = compile_expr ctx e in
 			(match ty, rc with
@@ -669,14 +494,6 @@ and compile_stmt ctx = function
 and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.code * val_type * Leoc.rvalue list) = fun ctx -> function
 	| Val i -> ctx, [], TInt, [Leoc.Val i] 
 	| LV lv -> compile_lvalue ctx lv 
-	(*| LV(Var name) -> 
-			let ty = gettype ctx name in
-			let rvc =	(match ty with
-				| TInt  | TByte   -> [C.LV(C.Var name)]    
-				| TVoid -> []
-				| TArray(aty, alen) -> [C.LV(C.Var name); rv_of_num alen]
-				| TRange(st,en) -> [rv_of_num st; rv_of_num en]) in
-			ctx, [], ty, rvc*)
 	| Arith(op, e1, e2) ->
 			let ctx1, code1, ty1, rc1 = compile_expr ctx e1 in
 			let ctx2, code2, ty2, rc2 = compile_expr ctx1 e2 in
@@ -685,25 +502,6 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 	| Call(name, elist) -> 
 			let ctx1, code1, args, compfun = get_compiled_fun ctx name elist in
 			ctx1, code1, compfun.ftype, [Leoc.FCall(compfun.uname, args)]			
-	(*| LV(ArrElt(name, e)) ->
-			let aty, alen = match gettype ctx name with
-				| TArray(ty, len) -> ty, len
-				| _ -> failwith (name ^ " is not an array") in
-			let ctx1, code1, ety, erc = compile_expr ctx e in
-			let is_idx_range = match ety with TRange _ -> true | _ -> false in		
-			if is_idx_range then 
-				compile_expr ctx (LV(SubArr(name, seq_of_expr e))) 
-			else					
-				let idx_rv = match ety, erc with
-					| TInt, [rv] -> rv
-					| TByte, [rv] -> Leoc.Byte rv
-					| _, _ -> failwith ("bad type of array index: " ^ (show_expr 0 e)) in
-				let elt_size = match aty with
-					| TInt  -> 4	| TByte  -> 1	| _ -> failwith (name ^ "is an array of an unsuported type") in  
-				let rv = 
-					if elt_size > 1 then Leoc.PArith(Add, C.LV(C.Var name), Leoc.Arith(Mul, idx_rv, Leoc.Val elt_size))   
-					else Leoc.PArith(Add, C.LV(C.Var name), idx_rv) in
-				ctx1, code1, aty, [rv]*)	
 	| Range(e1, e2) ->
 			let ctx1, code1, ty1, rc1 = compile_expr ctx e1 in
 			let ctx2, code2, ty2, rc2 = compile_expr ctx1 e2 in
@@ -716,12 +514,6 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 			let ctx3, code3, num1 = num_of_rv ctx2 (to_int ty1 (List.hd rc1)) in
 			let ctx4, code4, num2 = num_of_rv ctx3 (to_int ty2 (List.hd rc2)) in			
 			ctx4, code1 @ code2 @ code3 @ code4, TRange(num1, num2), [rv_of_num ctx4 num1; rv_of_num ctx4 num2]			
-	(*| Seq(SVal name) ->
-			let ty = gettype ctx name in
-			let rc = match ty with
-				| TRange(n1, n2) -> [rv_of_num n1; rv_of_num n2]
-				| _ -> failwith (name ^ "is not a sequence") in
-			ctx, [], ty, rc*)  		
 	| Length exp ->
 			let ctx1, code1, ty, rc = compile_expr ctx exp in
 			let rv = (match ty with
@@ -760,23 +552,6 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 						code, TRange(num1, n2), [rv_of_num ctx num1; rv_of_num ctx n2]																																			 
 				| _ -> failwith (Printf.sprintf "bad type in Head(%s), type: %s" (show_expr 0 exp) (show_type ty))) in
 			ctx, code1 @ code2, tty, rvs
-	(*| LV(SubArr(name, seq)) -> 
-			let prep_code, rv1, rv2 = match seq with 
-				| SRange(e1, e2) -> 
-						let _, code1, ty1, rc1 = compile_expr ctx e1 in
-						let _, code2, ty2, rc2 = compile_expr ctx e2 in
-						code1 @ code2, List.hd rc1, List.hd rc2 
-				| SVal sv ->
-						(match gettype ctx sv with
-						| TRange(n1, n2) -> [], rv_of_num n1, rv_of_num n2 
-						| _ -> failwith (name^": subarray argument must be a range")) in
-			let elt_size, ety = match gettype ctx name with
-				| TArray(aty, alen) -> (match aty with TInt->4 | TByte->1 | _->failwith "bad array type"), aty
-				| _ -> failwith (name ^ " is not an array") in
-			let lenvar = Printf.sprintf "arr_len_%d" (uid()) in
-			let len_code = [C.DefVar lenvar; C.Assign(C.Var lenvar, C.Arith(Add, C.Arith(Sub, rv2, rv1), C.Val 1))] in
-			let rv_begin = if elt_size > 1 then C.Arith(Mul, rv1, C.Val elt_size) else rv1 in
-			ctx, prep_code @ len_code, TArray(ety, NVar lenvar), [C.Arith(Add, C.LV(C.Var name), rv_begin); C.LV(C.Var lenvar)]*)  				
 	| New(arrtype, e) ->  
 			let ctx1, code1, ety, erc = compile_expr ctx e in
 			let size_rv = match ety, erc with
@@ -891,85 +666,6 @@ and compile_cond ctx = function
 ;;
 (***********************************************************)		
 
-
-(*let prg = [
-	Def("x", [], Val 5);
-	Def("sum", ["a"; "b"], Arith(Add, Var "a", Var "b"));
-	Def("m", [], New(AInt, Val 10));
-	For(["i", SRange(Val 0, Val 9)], [Write(LArr("m", Var "i"), Arith(Add, Var "i", Val 1))]);
-	Def("bs", [], New(AByte, Val 10));
-	Write(LVar "bs", Var "m");	
-	Def("iter", ["f"; "seq"], Comp [
-		For(["i", SVal "seq"], [Expr(Call("f", [Var "i"]))])
-	]);
-	Def("fold", ["f"; "v0"; "seq"], Comp [
-		Def("t", [], Var "v0");
-		For(["x", SVal "seq"], [ Write(LVar "t", Call("f", [Var "t"; Var "x"])) ]);
-		Expr(Var "t")
-	]);
-	Def("printer", ["x"], Comp[Print(Var "x")]);
-	(*Expr(Call("iter", [ Lambda(["x"], Comp [Print (Var "x")]); Var "m" ]));*)
-	Expr(Call("iter", [Var "printer"; Var "m"]));
-	Expr(Call("iter", [Var "printer"; Var "bs"]));
-	Expr(Call("iter", [Var "printer"; Seq(SRange(Val 5, Val 15))]));
-	Print(Call("fold", [ Var "sum"; Val 0; Var "m" ]));
-	
-	Def("add", [], Lambda(["x"], Lambda(["y"], Arith(Add, Var "x", Var "y"))));
-	Print(Call("add", [Val 2; Val 3]));
-	Def("five", [], Call("add", [Val 2; Val 3]));
-	Print(Call("add", [Var "five"; Var "five"]));
-	
-	Def("map", ["f"; "m"], Comp [
-		Def("r", [], New(AInt, Length (Var "m")));	
-		For(["i", SRange(Val 0, Arith(Sub, Length(Var "m"), Val 1))], [Write(LArr("r", Var "i"), Call("f", [Arr("m", Var "i")]))]);
-		Expr(Var "r")
-	]);	
-	
-	Def("adder", [], Lambda(["y"], Arith(Add, Val 5, Var "y")));
-	Def("a", [], Call("map", [Var "adder"; Var "m"]));
-	
-	Def("big", [], If(Less(Val 5, Var "five"), Val 1, Some (Val 0)));
-	
-	For(["i", SVal "a"], [ Expr(If(Less(Val 4, Var "i"), Comp [Print(Var "i")], None)) ]);
-	
-	Def("fib", ["n"], 
-		Comp [
-			Print(Var "n");
-			Expr(If(Less(Var "n", Val 2), Val 1, 
-				Some( Arith(Add, Call("fib", [Arith(Sub, Var "n", Val 1)]), Call("fib", [Arith(Sub, Var "n", Val 2)]) ))))
-		]
-	);
-	Print(Call("fib", [Var "five"]));
-	
-	Def("printall", ["xs"; "i"],
-		If(Less(Var "i", Length(Var "xs")), 
-			Comp[ Print(Arr("xs", Var "i")); Expr(Call("printall", [Var "xs"; Arith(Add, Var "i", Val 1)])) ],
-			None)
-	);
-	Expr(Call("printall", [Var "m"; Val 0]));
-	Expr(Call("printall", [Var "bs"; Val 0]));
-	
-	Def("showhead", ["xs"], Comp [Print(Head(Var "xs"))]);
-	Expr(Call("showhead", [Var "m"]));
-	Expr(Call("showhead", [Var "bs"]));
-	Expr(Call("showhead", [Seq(SRange(Val 2, Val 5))]));
-
-	Def("showall", ["xs"],
-		If(Less(Val 0, Length(Var "xs")), 
-			Comp[ Print(Head(Var "xs")); Expr(Call("showall", [Tail(Var "xs")])) ],
-			None)
-	);
-	
-	Def("m2", [], Var "m");
-			
-	Expr(Call("showall", [Var "m"]));
-	Expr(Call("showall", [Var "bs"]));
-	Expr(Call("showall", [Seq(SRange(Val 2, Val 5))]));
-	Expr(Call("showall", [SubArr("m", SRange(Val 5, Val 7))]));
-	
-	Write(LSubArr("m", SRange(Val 3, Val 6)), Var "a");
-];;*)
-
 let process prg show =
 	if show then begin
 		prg |> show_code 0 |> print_endline;
@@ -983,13 +679,3 @@ let process prg show =
 		Leoc.process ccode
 	end else
 		prg |> expand_code M.empty |> snd |> compile_code empty_context |> snd |> Leoc.process;;
-
-(*prg |> show_code 0 |> print_endline;;
-print_endline "\n";;
-let eprg = prg |> expand_code M.empty |> snd;;
-eprg |> show_code 0 |> print_endline;;
-print_endline "\n";;
-let _, ccode = compile_code empty_context eprg;;
-ccode |> Leoc.show_code 0 |> print_endline;;
-print_endline "\n";;
-Leoc.process ccode;;*)

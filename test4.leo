@@ -1,15 +1,16 @@
+type point = { x :int; y : int }
+
 type indata = {
  len : int
  str : byte[len]
  ints : int[10]
- par : int
+ p : point
  outstr : byte[len]
 }
  
 args : indata
 
 print(args.len)
-print(args.par)
 
 for i in args.ints.range
  args.ints[i] <- i+1
@@ -19,5 +20,4 @@ for i in args.str.range
  args.outstr[i] <- args.str[|args.str| - 1 - i]
 end
 
-x = 20/5/4
-
+args.p.x <- 2000/5/4
