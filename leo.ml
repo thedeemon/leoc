@@ -674,8 +674,10 @@ let process prg show =
 		eprg |> show_code 0 |> print_endline;
 		print_endline "\n";
 		let _, ccode = compile_code empty_context eprg in
-		ccode |> Leoc.simp_code |> Leoc.show_code 0 |> print_endline;
+		ccode |> Leoc.show_code 0 |> print_endline;
+		let scode = ccode |> Optim.optimize in 
+		scode |> Leoc.simp_code |> Leoc.show_code 0 |> print_endline;
 		print_endline "\n";
-		Leoc.process ccode
+		Leoc.process scode
 	end else
-		prg |> expand_code M.empty |> snd |> compile_code empty_context |> snd |> Leoc.process;;
+		prg |> expand_code M.empty |> snd |> compile_code empty_context |> snd |> Optim.eval |> Leoc.simp_code |> Leoc.process;;
