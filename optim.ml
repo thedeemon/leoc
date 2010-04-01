@@ -24,8 +24,8 @@ let mark vars ch = M.mapi (fun vname vvalue -> if S.mem vname ch then Complex el
 
 let rec eval_stmt ctx = function
 	| DefVar name as x -> defvar ctx name, x
-	| Assign(lv, rv)  -> let ctx', rv' = eval_assgn ctx lv rv in ctx', Assign(lv, rv')
-	| Assignb(lv, rv) -> let ctx', rv' = eval_assgn ctx lv rv in ctx', Assignb(lv, rv')			
+	| Assign(lv, rv)  -> let ctx', lv', rv' = eval_assgn ctx lv rv in ctx', Assign(lv', rv')
+	| Assignb(lv, rv) -> let ctx', lv', rv' = eval_assgn ctx lv rv in ctx', Assignb(lv', rv')			
 	| Call(name, rvs) -> ctx, Call(name, List.map (eval_rvalue ctx) rvs)   
 	| Defun(name, params, code) ->
 			let ctx' = List.fold_left (fun cx par -> setvar cx par Complex) newctx params in  
@@ -56,15 +56,20 @@ let rec eval_stmt ctx = function
 	| Comp code -> let ctx', code', _ = eval_code ctx code in ctx', Comp code'
 	| Break as x -> ctx, x 
 
-and eval_assgn ctx lv rv = 	
-	let rv' = eval_rvalue ctx rv in
-	let ctx' = match lv with
+and eval_assgn ctx lv rv = 		 
+	let lv' = eval_lvalue ctx lv and rv' = eval_rvalue ctx rv in
+	let ctx' = match lv' with
 		| Var name ->
-				(match rv' with
-				| Val _ | LV(Var _) -> setvar ctx name (Copy rv')
-				| _ -> setvar ctx name Complex)
+				let value = match rv' with
+					| Val _ | LV(Var _) -> Copy rv'
+					| _ -> Complex in
+				setvar ctx name value
 		| _ -> ctx in 
-	ctx', rv'
+	ctx', lv', rv'
+			
+and eval_lvalue ctx lv = match lv with
+	| Var _ | PVar _ | LReg _ -> lv
+	| PArith(op, lv1, rv2) -> PArith(op, eval_lvalue ctx lv1, eval_rvalue ctx rv2)			
 			
 and eval_rvalue ctx = function
 	| Val i as x -> x
