@@ -28,7 +28,7 @@ and expr =
 	| Length of expr
 	| Head of expr
 	| Tail of expr
-	| New of array_type * expr 
+	| New of array_type * expr list
 	| If of condition * expr * expr option
 	| Lambda of name list * expr
 	| Comp of code 
@@ -78,7 +78,7 @@ and show_expr n = function
 	| Length e -> Printf.sprintf "|%s|" (show_expr n e)
 	| Head e -> (show_expr n e) ^ ".head"
 	| Tail e -> (show_expr n e) ^ ".tail"
-	| New(arrtype, e) -> Printf.sprintf "new %s[%s]" (show_atype arrtype) (show_expr n e) 
+	| New(arrtype, es) -> Printf.sprintf "new %s[%s]" (show_atype arrtype) (List.map (show_expr n) es |> String.concat ", ") 
 	| If(con, e1, e2o) -> Printf.sprintf "if %s then %s %s" (show_cond n con) (show_expr n e1) 
 													(Option.map_default (show_expr n >> Printf.sprintf "else %s") "" e2o)
 	| Lambda(name_list, e) -> Printf.sprintf "(%s) => %s" (String.concat ", " name_list) (show_expr n e) 
@@ -112,7 +112,7 @@ let rec is_recursive funname = function
 	| Call(name, elist) -> funname = name || (List.exists (is_recursive funname) elist) 
 	| Range(e1, e2) -> (is_recursive funname e1) || (is_recursive funname e2)
 	| Length e | Head e | Tail e -> is_recursive funname e
-	| New(arrtype, e) -> is_recursive funname e 
+	| New(arrtype, es) -> List.exists (is_recursive funname) es 
 	| If(con, e1, e2o) -> (cond_uses_fun funname con) || (is_recursive funname e1) || (Option.map_default (is_recursive funname) false e2o)												
 	| Lambda(name_list, e) -> 
 			(if List.mem funname name_list then failwith ("one name for function and lambda arg: "^funname);
@@ -190,7 +190,7 @@ and expand_expr ctx = function
 	| Length e -> Length(expand_expr ctx e) 
 	| Head e -> Head(expand_expr ctx e)
 	| Tail e -> Tail(expand_expr ctx e)
-	| New(arrtype, e) -> New(arrtype, expand_expr ctx e) 
+	| New(arrtype, es) -> New(arrtype, List.map (expand_expr ctx) es) 
 	| If(con, e1, e2o) -> If (expand_con ctx con, expand_expr ctx e1, Option.map (expand_expr ctx) e2o)												
 	| Lambda(name_list, e) as x -> x 
 	| Comp code -> Comp(expand_code ctx code |> snd)
@@ -236,7 +236,7 @@ and subst_expr subs_map k = function
 	| Length e -> Length(subst_expr subs_map k e)
 	| Head e -> Head(subst_expr subs_map k e)
 	| Tail e -> Tail(subst_expr subs_map k e)
-	| New(arrtype, e) -> New(arrtype, subst_expr subs_map k e) 
+	| New(arrtype, es) -> New(arrtype, List.map (subst_expr subs_map k) es) 
 	| If(con, e1, e2o) -> If (subst_con subs_map k con, subst_expr subs_map k e1, Option.map (subst_expr subs_map k) e2o)												
 	| Lambda(name_list, e) -> Lambda(name_list, subst_expr subs_map k e) 
 	| Comp code -> Comp(subst_code subs_map k code)	
@@ -310,7 +310,7 @@ let valtype_of_ftype = function
 	| FArray(atype, num) -> TArray(vtype_of_atype atype, num) 
 	| FStruct name -> TStruct name		
 	
-let get_code ctx = function 
+let get_code = function 
 	| Code c -> c 
 	| Func name -> 
 			try (M.find name !funs).compiled |> List.map (fun (ts, cf) ->  cf.cbody) 
@@ -370,10 +370,14 @@ and num_of_rv ctx = function
 	| C.LV(C.Var nm) -> ctx, [], NVar nm
 	| rv -> let var = Printf.sprintf "bound_%d" (uid ()) in
 					addvar ctx var TInt, [C.DefVar var; C.Assign(C.Var var, rv)], NVar var	
-			
+	
+let mix lst = 
+	let a = Array.of_list lst |> Array.map (fun x -> (Random.float 1.0, x)) in Array.sort compare a;
+	Array.map snd a |> Array.to_list			
+							
 let rec compile_code ctx code =
 	let ctx1, code1 = List.fold_left (fun (cx,cd) stmt -> let cx1, st1 = compile_stmt cx stmt in cx1, st1::cd) (ctx, []) code in
-	ctx1, code1 |> List.rev |> List.map (get_code ctx1) |> List.concat 
+	ctx1, code1 |> List.rev |> List.map get_code |> List.concat 
 	
 and compile_lvalue ctx = function
 	| Var path -> compile_path ctx path 
@@ -406,7 +410,7 @@ and compile_stmt ctx = function
 			let _, _, ty, _ = compile_expr ctx e1 in
 			let ctx1 = addvar ctx name ty in
 			let ctx2, compres = compile_stmt ctx1 (Write(Var (name, []), If(con, e1, e2o))) in
-			ctx2, Code ([C.DefVar name] @ get_code ctx2 compres)  
+			ctx2, Code ([C.DefVar name] @ get_code compres)  
 	| Def(name, [], exp) -> 
 			let ctx1, code1, ty, rc = compile_expr ctx exp in
 			let ctx2 = addvar ctx1 name ty in
@@ -552,7 +556,7 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 						code, TRange(num1, n2), [rv_of_num ctx num1; rv_of_num ctx n2]																																			 
 				| _ -> failwith (Printf.sprintf "bad type in Head(%s), type: %s" (show_expr 0 exp) (show_type ty))) in
 			ctx, code1 @ code2, tty, rvs
-	| New(arrtype, e) ->  
+	| New(arrtype, [e]) ->  
 			let ctx1, code1, ety, erc = compile_expr ctx e in
 			let size_rv = match ety, erc with
 				| TInt, [rv] -> rv
@@ -570,6 +574,22 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 			let alloc_code = [Leoc.DefVar arr_var; Leoc.Alloc(Leoc.Var arr_var, size_rv2)] in
 			let ty = match arrtype with AInt -> TArray(TInt, alen) | AByte -> TArray(TByte, alen) in
 			ctx2, code1 @ code2 @ alloc_code, ty, [C.LV(C.Var arr_var); size_rv]
+	| New(arrtype, es) ->
+			let len = List.length es in
+			let size_rv = match arrtype with AByte -> C.Val len | AInt -> C.Val (4*len) in
+			let k = uid () in 
+			let alen = NVal len in
+			let arr_var = Printf.sprintf "array_%d" k in
+			let alloc_code = [Leoc.DefVar arr_var; Leoc.Alloc(Leoc.Var arr_var, size_rv)] in
+			let ty, mkasgn, elt_sz = match arrtype with 
+				| AInt -> TArray(TInt, alen), (fun l r -> Leoc.Assign(l, r)), 4 
+				| AByte -> TArray(TByte, alen), (fun l r -> Leoc.Assignb(l, r)), 1 in			 
+			let ctx2 = addvar ctx arr_var ty in
+			let ass_code = es |> List.mapi (fun idx e ->	
+				let stmt = Write(ArrElt((arr_var, []), Val idx), e) in
+				let _, res = compile_stmt ctx2 stmt in
+				get_code res) |> mix |> List.concat in
+			ctx, alloc_code @ ass_code, ty, [C.LV(C.Var arr_var); C.Val len]				
 	| If(con, e1, e2o) -> 
 			let con_code, ccon = compile_cond ctx con in
 			let _, code1, ty1, rc1 = compile_expr ctx e1 in
@@ -597,7 +617,7 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 					let ctx1, code01 = List.fold_left (fun (cx,cd) stmt -> 
 						let cx1, st1 = compile_stmt cx stmt in cx1, st1::cd) (ctx, []) (List.rev rest_code) in
 					let ctx2, code2, ty, rc = compile_expr ctx1 e in
-					let ccode = code01 |> List.rev |> List.map (get_code ctx2) |> List.concat in
+					let ccode = code01 |> List.rev |> List.map get_code |> List.concat in
 					ctx2, ccode @ code2, ty, rc
 			| Ret e :: rest_code ->		
 					let ctx1, _ = compile_code ctx (List.rev rest_code) in

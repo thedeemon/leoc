@@ -55,7 +55,7 @@ and simple_expr_r s = (
 	||| (tok Llcurly >>> opt_terms >>> stmts >>= fun code -> opt_terms >>> tok Lrcurly >>> return (Leo.Comp code))
 	||| (tok Lif >>> condition >>= fun con -> then_ >>> expr >>= fun e1 -> 
 					p_opt None (else_ >>> expr >>= fun e2 -> return (Some e2)) >>= fun e2o -> return (Leo.If(con, e1, e2o)) )
-	||| (tok Lnew >>> atype >>= fun ty -> tok Llbracket >>> expr >>= fun e -> tok Lrbracket >>> return (Leo.New(ty, e)))
+	||| (tok Lnew >>> atype >>= fun ty -> tok Llbracket >>> p_list expr (tok Lcomma) >>= fun es -> tok Lrbracket >>> return (Leo.New(ty, es)))
 	||| (tok Lbackslash >>> p_list ident (tok Lcomma) >>= fun ps -> tok Lfollow >>> expr >>= fun e -> return(Leo.Lambda(ps, e)))
 	||| (ident >>= fun name -> tok Llparen >>> args >>= fun es -> tok Lrparen >>> 
 				return (if name="print" then Leo.Comp [Leo.Print(List.hd es)] else Leo.Call(name, es)))	
