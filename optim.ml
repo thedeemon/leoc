@@ -54,7 +54,7 @@ let rec eval_stmt ctx = function
 				| _ -> ctx in
 			ctx', Alloc(lv, eval_rvalue ctx rv)
 	| Comp code -> let ctx', code', _ = eval_code ctx code in ctx', Comp code'
-	| Break as x -> ctx, x 
+	| Break | Trash _ as x -> ctx, x 
 
 and eval_assgn ctx lv rv = 		 
 	let lv' = eval_lvalue ctx lv and rv' = eval_rvalue ctx rv in
@@ -106,7 +106,7 @@ let eval code =
 (*************** dead code elimination ***********************)
 
 let def (defs, uses) var = S.add var defs, uses
-let use (defs, uses) var = Printf.printf "use %s\n" var; defs, S.add var uses
+let use (defs, uses) var = Printf.printf "#use %s\n" var; defs, S.add var uses
 let show set = print_string "["; S.iter (Printf.printf "%s ") set; print_string "]\n"
 
 let rec collect_stmt ctx = function
@@ -121,7 +121,7 @@ let rec collect_stmt ctx = function
 	| Print rv -> collect_rvalue ctx rv
 	| Alloc(lv, rv) -> collect_asgn ctx lv rv
 	| Comp code -> collect_code ctx code 
-	| Break -> ctx 
+	| Break | Trash _ -> ctx 
 									
 and collect_asgn ctx lv rv =									
 	let ctx1 = collect_rvalue ctx rv in
@@ -154,7 +154,7 @@ and collect_code (defs, uses) code =
 	
 let rec clean_stmt uses st = match st with
 	| DefVar name | Assign(Var name, _) | Assignb(Var name, _) | Alloc(Var name, _) -> if S.mem name uses then Some st else None 
-	| Assign _	| Assignb _	| Call _	| Defun _ | Ret _	| Print _	| Break | Alloc _ -> Some st	
+	| Assign _	| Assignb _	| Call _	| Defun _ | Ret _	| Print _	| Break | Alloc _  | Trash _ -> Some st	
 	| If(con, code1, code2) -> Some(If(con, clean_code uses code1, clean_code uses code2))
 	| While(con, code) -> Some(While(con, clean_code uses code))
 	| Comp code -> Some(Comp(clean_code uses code)) 
@@ -163,7 +163,7 @@ and clean_code uses code =
 	let k = uid () in
 	Printf.printf "#clean_code %d, uses = " k; show uses;
 	let _, uses' = collect_code (S.empty, uses) code in
-	Printf.printf "uses' %d = " k; show uses';
+	Printf.printf "#uses' %d = " k; show uses';
 	List.enum code |> Enum.filter_map (clean_stmt uses') |> List.of_enum 
 	
 let optimize code = code |> eval |> clean_code S.empty	

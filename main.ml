@@ -8,6 +8,24 @@ let echolexer lbuf =
 	let lbuf = Lexing.from_string str in
 	Leo_parser.program echolexer (*Leolex.lexer*) lbuf;;*)
 
+let process prg show =
+	let maybe = if show then (fun f x -> f x) else (fun f x -> ()) in 
+	prg |> maybe(Leo.show_code 0 >> print_endline);
+	maybe print_endline "\nexpanded Leo:\n";
+	let eprg = prg |> Leo.expand_code M.empty |> snd in
+	eprg |> maybe(Leo.show_code 0 >> print_endline);
+	maybe print_endline "\nLeoC:\n";
+	let _, ccode = Leo.compile_code Leo.empty_context eprg in
+	ccode |> maybe(Leoc.show_code 0 >> print_endline);
+	maybe print_endline "\nsimplified LeoC:\n";
+	let scode = ccode |> Optim.optimize |> Leoc.simp_code in 
+	scode |> maybe (Leoc.show_code 0 >> print_endline);
+	maybe print_endline "\nnoisy LeoC:\n";
+	let noisy_ccode = Noise.add_noise scode in
+	maybe (Leoc.show_code 0 >> print_endline) noisy_ccode;
+	maybe print_endline "\nasm:\n";
+	noisy_ccode |> Leoc.compile |> Triasm.process;;
+
 let main () =
 	if Array.length Sys.argv < 2 then Printf.printf "Usage: %s <program.leo>" Sys.argv.(0) else
 	begin 
@@ -22,7 +40,7 @@ let main () =
     match Parse.parse_program tokens with
 		| Parsercomb.Parsed(ast, cs) -> 
 				(*cs |> String.implode |> print_endline*) 
-				Leo.process ast true
+				process ast true
 		| Parsercomb.Failed -> print_endline "parsing failed"
   end;; 
          

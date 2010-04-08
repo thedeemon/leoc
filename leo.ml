@@ -18,6 +18,7 @@ and statement =
 	| Ret of expr
 	| Typedef of name * struct_type
 	| Typing of name * name
+	| Trash of bool
 
 and expr =
 	| Val of int
@@ -68,6 +69,7 @@ and show_stmt n = function
 			let delim = tab n "" in			 
 			Printf.sprintf "type %s = {\n%s%s" name (List.map show_field fields |> String.concat delim) (tab n "}")
 	| Typing(varname, typename) -> Printf.sprintf "%s : %s" varname typename
+	| Trash on -> if on then "$trash" else "$notrash"
 
 and show_expr n = function
 	| Val i -> string_of_int i
@@ -132,7 +134,7 @@ and stmt_uses_fun funname = function
 			is_recursive funname exp) 
 	| Write(_, e) | Print e	| Ret e	| Expr e -> is_recursive funname e
 	| For(name_seq_list, code) -> (List.exists (snd >> is_recursive funname) name_seq_list) || (List.exists (stmt_uses_fun funname) code)
-	| Typedef _ | Typing _ -> false
+	| Typedef _ | Typing _ | Trash _ -> false
 
 and lvalue_uses_fun funname = function
 	| Var (name, _) -> name = funname
@@ -175,7 +177,7 @@ and expand_stmt ctx = function
 			let _, ecode = expand_code ctx code in
 			ctx, Some(For(ns, ecode))
 	| Ret e -> ctx, Some(Ret(expand_expr ctx e))
-	| Typedef _ | Typing _ as x -> ctx, Some x
+	| Typedef _ | Typing _ | Trash _ as x -> ctx, Some x
 
 and expand_lvalue ctx = function
 	| Var _ as x -> x
@@ -266,7 +268,7 @@ and subst_stmt subs k = function
 			let ns = List.map (fun (nm, sq) -> nm, subst_expr subs k sq) name_seq_list in
 			subs, For(ns, subst_code subs k code)
 	| Ret e -> subs, Ret(subst_expr subs k e)
-	| (Typedef _ as x) | (Typing _ as x) -> subs, x
+	| Typedef _  | Typing _  | Trash _ as x -> subs, x
 			
 and subst_lvalue_expr subs k = function
 	| Var path as x -> (try M.find (pathname path) subs with Not_found -> LV x) 
@@ -334,7 +336,7 @@ let rec returnize = function
 	| e -> Comp [Ret e]  	
 	
 let rec compile_path ctx (name, flds) =
-	Printf.printf "compile_path %s\n" (show_path (name, flds));
+	Printf.printf "#compile_path %s\n" (show_path (name, flds));
 	let rec loop lv ty fields lfields =
 		match ty with
 		| TInt  | TByte   -> ctx, [], ty, [C.LV lv]    
@@ -493,7 +495,8 @@ and compile_stmt ctx = function
 			| TVoid, _ -> ctx, Code  (code @ [Leoc.Ret []])
 			| _, _ -> failwith (Printf.sprintf "trying to return a %s" (show_type ty)))
 	| Typedef (name, ty) -> struct_types := M.add name ty !struct_types; ctx, Code []
-	| Typing (varname, typename) -> addvar ctx varname (TStruct typename), Code []					 
+	| Typing (varname, typename) -> addvar ctx varname (TStruct typename), Code []		
+	| Trash on -> ctx, Code [Leoc.Trash on]			 
 			
 and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.code * val_type * Leoc.rvalue list) = fun ctx -> function
 	| Val i -> ctx, [], TInt, [Leoc.Val i] 
@@ -684,20 +687,3 @@ and compile_cond ctx = function
 			let code1, ccon1 = compile_cond ctx con in
 			code1, Leoc.Not(ccon1)
 ;;
-(***********************************************************)		
-
-let process prg show =
-	if show then begin
-		prg |> show_code 0 |> print_endline;
-		print_endline "\n";
-		let eprg = prg |> expand_code M.empty |> snd in
-		eprg |> show_code 0 |> print_endline;
-		print_endline "\n";
-		let _, ccode = compile_code empty_context eprg in
-		ccode |> Leoc.show_code 0 |> print_endline;
-		let scode = ccode |> Optim.optimize in 
-		scode |> Leoc.simp_code |> Leoc.show_code 0 |> print_endline;
-		print_endline "\n";
-		Leoc.process scode
-	end else
-		prg |> expand_code M.empty |> snd |> compile_code empty_context |> snd |> Optim.eval |> Leoc.simp_code |> Leoc.process;;

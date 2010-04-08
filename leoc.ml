@@ -16,6 +16,7 @@ and statement =
 	| Alloc of lvalue * rvalue
 	| Comp of code
 	| Break
+	| Trash of bool
 	
 and lvalue = Var of name | PVar of name	| LReg of int | PArith of oper * lvalue * rvalue
 and rvalue =
@@ -53,6 +54,7 @@ and show_stmt n = function
 	| Alloc(lv, rv) -> Printf.sprintf "%s <- new [%s]" (show_lvalue lv) (show_rvalue rv)
 	| Comp code -> Printf.sprintf "{\n%s\n%s" (show_code (n+1) code) (tab n "}")
 	| Break -> "break"
+	| Trash on -> if on then "$trash" else "$notrash"
 
 and show_lvalue = function
 	| Var name -> name 
@@ -91,7 +93,7 @@ and subst_stmt smap = function
 	| Print rv -> Print (subst_rvalue smap rv) 
 	| Alloc(lv, rv) -> Alloc(subst_lvalue smap lv, subst_rvalue smap rv)
 	| Comp code -> Comp(subst_code smap code)
-	| Break as x -> x
+	| Break | Trash _ as x -> x
 
 and subst_lvalue smap = function
 	| Var name as x -> (try M.find name smap with Not_found -> x) 
@@ -130,7 +132,7 @@ and simp_stmt = function
 	| Print rv -> Print (simp_rvalue rv) 
 	| Alloc(lv, rv) -> Alloc(simp_lvalue lv, simp_rvalue rv)
 	| Comp code -> Comp(simp_code code)
-	| Break as x -> x
+	| Break | Trash _ as x -> x
 
 and simp_rvalue = function
 	| LV lv -> LV(simp_lvalue lv) 
@@ -254,7 +256,7 @@ let rec calc_retsize name code =
 	List.fold_left (fun szo cmd ->
 		match cmd with
 		| Ret rvs -> update (List.length rvs) szo
-		| DefVar _ 	| Assign _	| Assignb _	| Call _	| Defun _	| Print _ | Alloc _ | Break -> szo
+		| DefVar _ 	| Assign _	| Assignb _	| Call _	| Defun _	| Print _ | Alloc _ | Break | Trash _ -> szo
 		| If(cond, code1, code2) -> 
 				let szo1 = Option.map_default (flip update szo) szo (calc_retsize name code1) in
 				Option.map_default (flip update szo1) szo1 (calc_retsize name code2) 
@@ -359,7 +361,8 @@ and compile_stmt ctx = function
 			let ctx3, adst = use_dst ctx2 dst in				
 			let ctx4, asrc = use_src ctx3 src in
 			ctx4, code1 @ code2 @ [T.New(adst, asrc)]		
-	| Break -> ctx, [Triasm.Break]			
+	| Break -> ctx, [Triasm.Break]	
+	| Trash _ -> ctx, []		
 	
 and compile_call ctx name rvs =
 	let fn = getfun ctx name in
@@ -426,7 +429,6 @@ and compile_cond ctx = function
 		 	ctx2, T.Or(c1, c2)
 	| Not con -> ctx, T.Not(compile_cond ctx con |> snd)
 
-let process prg = prg |> simp_code |> compile  |> Triasm.process;;
 (****************************************************************)
 
 let prg = [

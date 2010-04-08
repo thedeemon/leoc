@@ -44,6 +44,8 @@ rule lexer = parse
  | "byte"                { Lbyte }
  | "int"                 { Ltint }
  | "type"                { Ltype }
+ | "$trash"              { Ltrash }
+ | "$notrash"            { Lnotrash } 
  | ','                   { Lcomma }
  | '\\'                  { Lbackslash }
  | ':'									 { Lcolon }

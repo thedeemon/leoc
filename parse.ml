@@ -101,6 +101,8 @@ and stmt_r s = (
 	||| (tok Ltype >>> ident >>= fun tname -> tok Leq >>> tok Llcurly >>> opt_terms >>>
 				p_list field_def terms >>= fun flds -> opt_terms >>> tok Lrcurly >>>
 					return (Leo.Typedef(tname, flds))	)
+	||| (tok Ltrash >>> return (Leo.Trash true)) 
+	||| (tok Lnotrash >>> return (Leo.Trash false))
 	||| (ident >>= fun name -> opt_params >>= fun ps -> tok Leq >>> opt_terms >>>
 				expr >>= fun e1 -> tok Ldot2 >>> expr >>= fun e2 -> return (Leo.Def(name, ps, Leo.Range(e1,e2))))
 	||| (ident >>= fun name -> opt_params >>= fun ps -> tok Leq >>> opt_terms >>>
