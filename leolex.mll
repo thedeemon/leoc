@@ -37,6 +37,7 @@ rule lexer = parse
  | "then"                { Lthen }
  | "else"                { Lelse }
  | "return"              { Lreturn } 
+ | "while"               { Lwhile } 
  | ".head"               { Lhead }
  | ".tail"               { Ltail }
  | ".range"              { Lrange }

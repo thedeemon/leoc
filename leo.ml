@@ -19,6 +19,7 @@ and statement =
 	| Typedef of name * struct_type
 	| Typing of name * name
 	| Trash of bool
+	| While of condition * code
 
 and expr =
 	| Val of int
@@ -70,6 +71,7 @@ and show_stmt n = function
 			Printf.sprintf "type %s = {\n%s%s" name (List.map show_field fields |> String.concat delim) (tab n "}")
 	| Typing(varname, typename) -> Printf.sprintf "%s : %s" varname typename
 	| Trash on -> if on then "$trash" else "$notrash"
+	| While(con, code) -> Printf.sprintf "while %s\n%s\n%send" (show_cond n con) (show_code (n+1) code) (tab n "")
 
 and show_expr n = function
 	| Val i -> string_of_int i
@@ -135,6 +137,7 @@ and stmt_uses_fun funname = function
 	| Write(_, e) | Print e	| Ret e	| Expr e -> is_recursive funname e
 	| For(name_seq_list, code) -> (List.exists (snd >> is_recursive funname) name_seq_list) || (List.exists (stmt_uses_fun funname) code)
 	| Typedef _ | Typing _ | Trash _ -> false
+	| While(con, code) -> cond_uses_fun funname con || (List.exists (stmt_uses_fun funname) code)
 
 and lvalue_uses_fun funname = function
 	| Var (name, _) -> name = funname
@@ -178,6 +181,9 @@ and expand_stmt ctx = function
 			ctx, Some(For(ns, ecode))
 	| Ret e -> ctx, Some(Ret(expand_expr ctx e))
 	| Typedef _ | Typing _ | Trash _ as x -> ctx, Some x
+	| While(con, code) -> 
+			let _, ecode = expand_code ctx code in
+			ctx, Some(While(expand_con ctx con, ecode))
 
 and expand_lvalue ctx = function
 	| Var _ as x -> x
@@ -269,6 +275,7 @@ and subst_stmt subs k = function
 			subs, For(ns, subst_code subs k code)
 	| Ret e -> subs, Ret(subst_expr subs k e)
 	| Typedef _  | Typing _  | Trash _ as x -> subs, x
+	| While(con, code) -> subs, While(subst_con subs k con, subst_code subs k code) 
 			
 and subst_lvalue_expr subs k = function
 	| Var path as x -> (try M.find (pathname path) subs with Not_found -> LV x) 
@@ -486,6 +493,11 @@ and compile_stmt ctx = function
 			let _, ccode = compile_code ctx1 code in 
 			let ccode1 = Leoc.subst_code subs_map ccode in
 			let all_code = def_code @ init_code @ [Leoc.While(cond, ccode1 @ next_code)] in
+			ctx, Code [Leoc.Comp all_code] 
+	| While(con, code) ->
+			let con_code, ccon = compile_cond ctx con in
+			let _, ccode = compile_code ctx code in
+			let all_code = con_code @ [Leoc.While(ccon, ccode)] in
 			ctx, Code [Leoc.Comp all_code] 
 	| Ret e ->
 			let _, code, ty, rc = compile_expr ctx e in
