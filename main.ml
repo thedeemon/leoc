@@ -44,4 +44,16 @@ let main () =
 		| Parsercomb.Failed -> print_endline "parsing failed"
   end;; 
          
+(*Noise.test_shape 20;;
+Noise.test_shape 20;;
+Noise.test_shape 20;;
+Noise.test_shape 30;;
+Noise.test_shape 30;;
+Noise.test_shape 30;;
+Noise.test_shape 10;;
+Noise.test_shape 10;;
+Noise.test_shape 10;;
+Noise.test_shape 4;;				
+Noise.test_shape 4;;				
+Noise.test_shape 4;;*)				
 main();;
