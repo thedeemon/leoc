@@ -38,9 +38,11 @@ let main () =
 				if token = Tokens.Leof then List.rev res' else loop res' in
 			loop [] in				 
     match Parse.parse_program tokens with
-		| Parsercomb.Parsed(ast, cs) -> 
-				(*cs |> String.implode |> print_endline*) 
-				process ast true
+		| Parsercomb.Parsed(ast, []) ->	process ast true
+		| Parsercomb.Parsed(ast, unparsed) ->
+				if List.for_all (fun tt -> let t = Parse.get0 tt in t = Tokens.Leol || t = Tokens.Leof) unparsed	then  process ast true
+				else List.take 30 unparsed |> List.map (Parse.get0 >> Tokens.show_tok) |> String.concat " " 
+							|>	Printf.printf "Parsing problem near: %s\n" 
 		| Parsercomb.Failed -> print_endline "parsing failed"
   end;; 
          

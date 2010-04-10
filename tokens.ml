@@ -9,7 +9,7 @@ type token =
   | Lident of (string);;
 
 let show_tok = function
-	| Leol -> "eol"  | Leof -> "eof"  | Lpipe -> "|"  | Lcolon -> ":"  | Lsemi -> ";"  | Lquestion -> "?"
+	| Leol -> "eol\n"  | Leof -> "eof"  | Lpipe -> "|"  | Lcolon -> ":"  | Lsemi -> ";"  | Lquestion -> "?"
   | Lmod -> "%"  | Lplus -> "+"  | Lminus -> "-"  | Lmul -> "*"  | Ldiv -> "/"  | Lxor -> "^"  | Llt -> "<"
   | Lgt -> ">"  | Lleq -> "<="  | Lgeq -> ">="  | Leq -> "="  | Lneq -> "!="  | Llparen -> "("  | Lrparen -> ")"
   | Land -> "&&"  | Lor -> "||"  | Ldot -> "." | Ldot2 -> ".."  | Lcomma -> ","  | Llcurly -> "{"  | Lrcurly -> "}"
