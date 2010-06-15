@@ -28,6 +28,7 @@ let process prg show =
 
 let main () =
 	if Array.length Sys.argv < 2 then Printf.printf "Usage: %s <program.leo>" Sys.argv.(0) else
+	let verbose = Array.length Sys.argv > 2 in
 	begin 
   	let prog_text = Std.input_file Sys.argv.(1) in
 		let tokens =
@@ -38,9 +39,9 @@ let main () =
 				if token = Tokens.Leof then List.rev res' else loop res' in
 			loop [] in				 
     match Parse.parse_program tokens with
-		| Parsercomb.Parsed(ast, []) ->	process ast true
+		| Parsercomb.Parsed(ast, []) ->	process ast verbose
 		| Parsercomb.Parsed(ast, unparsed) ->
-				if List.for_all (fun tt -> let t = Parse.get0 tt in t = Tokens.Leol || t = Tokens.Leof) unparsed	then  process ast true
+				if List.for_all (fun tt -> let t = Parse.get0 tt in t = Tokens.Leol || t = Tokens.Leof) unparsed	then  process ast verbose
 				else List.take 30 unparsed |> List.map (Parse.get0 >> Tokens.show_tok) |> String.concat " " 
 							|>	Printf.printf "Parsing problem near: %s\n" 
 		| Parsercomb.Failed -> print_endline "parsing failed"

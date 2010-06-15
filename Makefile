@@ -10,8 +10,8 @@ RESULT  = leoc
 ANNOTATE = yes
 MSVC = true
 
-OCAMLFLAGS = -I e:/ocaml/extlib
-OCAMLLDFLAGS = -I e:/ocaml/extlib
+OCAMLFLAGS = -I c:/ocaml/extlib
+OCAMLLDFLAGS = -I c:/ocaml/extlib
 LIBS = extlib 
 
 # make target (see manual) : byte-code, debug-code, native-code, ...

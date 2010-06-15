@@ -189,7 +189,7 @@ and reshape_code (oplist, code) =
 						con_lst @ chunk_oplist @ lst, defs_code @ (ifst :: code')
 					else failwith "reshape: level < cur_level"   in
   let shape_code = List.combine (List.length code |> gen_shape) code |> flatten_notrash in
-	List.iter (fun (lev, st) -> Printf.printf "~%d: %s\n" lev (show_stmt 0 st)) shape_code;  					
+	(*List.iter (fun (lev, st) -> Printf.printf "~%d: %s\n" lev (show_stmt 0 st)) shape_code;*)  					
 	let lst, code' = reshape 0 shape_code in
 	lst @ oplist, code'					 
 						 
