@@ -180,8 +180,61 @@ let cmd_to_lvm2 = function
 	| Call(addr, a1) -> Printf.sprintf "CALL|R%cR, %d, %d, //%s\n" (src_pr a1) (fst addr) (src_n a1) (snd addr)
 	| Ret -> "RET,\n"
 	| Label addr -> Printf.sprintf "//%d - %s:\n" (fst addr) (snd addr);;		
+	
+let cmd n = n (* n << CMDSHIFT, CMDSHIFT = 0 now *)
+let modshift = 8
+				
+let op_add_rrr = cmd 0
+let op_mov = cmd 7
+let op_movb = cmd 8
+let op_jmple = cmd 9
+let op_jmpeq = cmd 10
+let op_jmp = cmd 11
+let op_print = cmd 12
+let op_new = cmd 13
+let op_call = cmd 14
+let op_ret = cmd 15
+
+let op_jmple_rr = cmd 17
+let op_add_rrv = cmd 18
+let op_mov_rv = cmd 19
+let op_mov_rr = cmd 20
+let op_inc = cmd 21 
+let op_inc4 = cmd 22
+ 
+let oper_code = function
+	| Add-> cmd 1 | Mul-> cmd 2 | Mod-> cmd 3 | Div-> cmd 5 | Sub-> cmd 4 | Xor-> cmd 6;;
+
+let dst_mod = function RegDest _ -> 0 | PntDest _ -> 1
+let src_mod = function Reg _ -> 0 | Pnt _ -> 1 | Val _ -> 2
+
+let modi d a1 a2 = 
+	(((dst_mod d) lsl 4) + ((src_mod a1) lsl 2) + (src_mod a2)) lsl modshift 
 		
-let process prg = prg |> optimize_jumps |> resolve_labels cmd_size |> DynArray.iter (cmd_to_lvm2 >> print_string);;
+let cmd_to_bc = function		
+	| Arith(Add, RegDest dr, Reg r1, Val 1) when dr = r1 -> [op_inc; dr; 0; 0]  
+	| Arith(Add, RegDest dr, Reg r1, Val 4) when dr = r1 -> [op_inc4; dr; 0; 0]   
+	| Arith(Add, RegDest dr, Reg r1, Val v2) -> [op_add_rrv; dr; r1; v2]  
+	| Arith(Add, RegDest dr, Reg r1, Reg r2) -> [op_add_rrr; dr; r1; r2]  
+	| Arith(op, d, a1, a2) -> [oper_code op lor modi d a1 a2; dst_n d; src_n a1; src_n a2]  
+	| Mov(RegDest dr, Reg r1) -> [op_mov_rr; dr; r1]
+	| Mov(RegDest dr, Val v1) -> [op_mov_rv; dr; v1]
+	| Mov(d, a1) -> [op_mov lor modi d a1 (Reg 0); dst_n d; src_n a1]
+	| Movb(d, a1) -> [op_movb lor modi d a1 (Reg 0); dst_n d; src_n a1]
+	| Jmple(addr, Reg r1, Reg r2) -> [op_jmple_rr; (fst addr); r1; r2]
+	| Jmple(addr, a1, a2) -> [op_jmple lor modi (RegDest 0) a1 a2; fst addr; src_n a1; src_n a2]
+	| Jmpeq(addr, a1, a2) -> [op_jmpeq lor modi (RegDest 0) a1 a2; fst addr; src_n a1; src_n a2]
+	| Jmp addr -> [op_jmp; fst addr]
+	| Print a1 -> [op_print lor modi (RegDest 0) a1 (Reg 0); 0; src_n a1]
+	| New(d, a1) -> [op_new lor modi d a1 (Reg 0); dst_n d; src_n a1]
+	| Call(addr, a1) -> [op_call lor modi (RegDest 0) a1 (Reg 0); fst addr; src_n a1]
+	| Ret -> [op_ret]
+	| Label addr -> []		
+				
+let process prg =
+	let cmds = prg |> optimize_jumps |> resolve_labels cmd_size in  
+	DynArray.iter (cmd_to_lvm2 >> print_string) cmds;
+	DynArray.to_list cmds |> List.map cmd_to_bc |> List.concat;;
 				
 let process_micro prg = prg |> optimize_jumps |> resolve_labels cmd_size_micro 
   |> DynArray.iter (cmd_to_micro >> print_string);;

@@ -1,3 +1,4 @@
+$notrash
 x = 5   # comment
 sum(a, b) = a + b
 sum(x, 1)
@@ -29,3 +30,14 @@ iter(printer, m)
 iter(printer, bs)
 iter(printer, 5..15)
 print(fold(sum, 0, m))
+
+sumall(x) = {
+ sum_loop(xs, sum) = 
+  if |xs| > 0 then sum_loop(xs.tail, sum + xs.head) else sum
+ sum_loop(x, 0)            
+}
+
+for mi in m, bi in bs
+ mi <- bi * 2
+end
+print(sumall(m))

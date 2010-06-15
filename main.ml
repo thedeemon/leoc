@@ -8,7 +8,13 @@ let echolexer lbuf =
 	let lbuf = Lexing.from_string str in
 	Leo_parser.program echolexer (*Leolex.lexer*) lbuf;;*)
 
-let process prg show =
+let write_le f i =
+        output_byte f (i land 0xff);
+        output_byte f ((i lsr 8) land 0xff);
+        output_byte f ((i lsr 16) land 0xff);
+        output_byte f ((i lsr 24) land 0xff)
+
+let process prg show fname =
 	let maybe = if show then (fun f x -> f x) else (fun f x -> ()) in 
 	prg |> maybe(Leo.show_code 0 >> print_endline);
 	maybe print_endline "\nexpanded Leo:\n";
@@ -24,7 +30,10 @@ let process prg show =
 	let noisy_ccode = Noise.add_noise scode in
 	maybe (Leoc.show_code 0 >> print_endline) noisy_ccode;
 	maybe print_endline "\nasm:\n";
-	noisy_ccode |> Leoc.compile |> Triasm.process;;
+	let bytecode = noisy_ccode |> Leoc.compile |> Triasm.process in
+	let f = open_out_bin (fname ^ ".bc") in 
+	List.iter (write_le f) bytecode;
+	close_out f;; 
 
 let main () =
 	if Array.length Sys.argv < 2 then Printf.printf "Usage: %s <program.leo>" Sys.argv.(0) else
@@ -39,9 +48,11 @@ let main () =
 				if token = Tokens.Leof then List.rev res' else loop res' in
 			loop [] in				 
     match Parse.parse_program tokens with
-		| Parsercomb.Parsed(ast, []) ->	process ast verbose
+		| Parsercomb.Parsed(ast, []) ->	process ast verbose Sys.argv.(1)
 		| Parsercomb.Parsed(ast, unparsed) ->
-				if List.for_all (fun tt -> let t = Parse.get0 tt in t = Tokens.Leol || t = Tokens.Leof) unparsed	then  process ast verbose
+				if List.for_all 
+					(fun tt -> let t = Parse.get0 tt in t = Tokens.Leol || t = Tokens.Leof) unparsed	
+				then  process ast verbose Sys.argv.(1)
 				else List.take 30 unparsed |> List.map (Parse.get0 >> Tokens.show_tok) |> String.concat " " 
 							|>	Printf.printf "Parsing problem near: %s\n" 
 		| Parsercomb.Failed -> print_endline "parsing failed"
