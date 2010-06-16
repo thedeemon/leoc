@@ -16,8 +16,9 @@ let show_vars = M.iter (fun name value -> Printf.printf "[%s = %s] " name (show_
 let newctx = M.empty, S.empty
 let defvar (vars, chg) var = M.add var Undefined vars, chg
 let setvar (vars, chg) var value = 
-	Printf.printf "#setvar %s = %s\n" var (show_val value);
+	if !verbose then Printf.printf "#setvar %s = %s\n" var (show_val value);
 	M.add var value vars, S.add var chg
+	
 let getvar (vars, _) var = try M.find var vars with Not_found -> (show_vars vars; failwith ("Optim: var not found: "^var)) 
 
 let mark vars ch = M.mapi (fun vname vvalue -> if S.mem vname ch then Complex else vvalue) vars
@@ -106,7 +107,10 @@ let eval code =
 (*************** dead code elimination ***********************)
 
 let def (defs, uses) var = S.add var defs, uses
-let use (defs, uses) var = Printf.printf "#use %s\n" var; defs, S.add var uses
+let use (defs, uses) var = 
+	if !verbose then Printf.printf "#use %s\n" var; 
+	defs, S.add var uses
+	
 let show set = print_string "["; S.iter (Printf.printf "%s ") set; print_string "]\n"
 
 let rec collect_stmt ctx = function
@@ -161,9 +165,9 @@ let rec clean_stmt uses st = match st with
 
 and clean_code uses code =
 	let k = uid () in
-	Printf.printf "#clean_code %d, uses = " k; show uses;
+	if !verbose then (Printf.printf "#clean_code %d, uses = " k; show uses);
 	let _, uses' = collect_code (S.empty, uses) code in
-	Printf.printf "#uses' %d = " k; show uses';
+	if !verbose then (Printf.printf "#uses' %d = " k; show uses');
 	List.enum code |> Enum.filter_map (clean_stmt uses') |> List.of_enum 
 	
 let optimize code = code |> eval |> clean_code S.empty	

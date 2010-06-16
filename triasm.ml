@@ -93,7 +93,7 @@ and compile_if ctx cond then_ else_ =
 			let else1 = compile_if ctx con2 then2 else_ in
 			compile_if ctx con1 then1 else1;;
 
-let process prg = prg |> compile [] |> Asm.process;;
+let process quiet prg = prg |> compile [] |> Asm.process quiet;;
 
 (*module A = Asm;;
 let prg = [

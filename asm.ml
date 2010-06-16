@@ -100,7 +100,7 @@ let remove_dead_code prg =
 			match DynArray.get prg ip with
 			| Jmp lab ->
 					let target = M.find lab labels in
-					Printf.printf "# code[%d]: jmp %d\n" ip target;
+					if !verbose then Printf.printf "# code[%d]: jmp %d\n" ip target;
 					if target = ip + 1 then (live.(ip) <- false; go (ip+1)) else Queue.add target threads
 			| Ret -> ()
 			| Jmple(lab, _, _) | Call(lab, _) 	
@@ -231,9 +231,9 @@ let cmd_to_bc = function
 	| Ret -> [op_ret]
 	| Label addr -> []		
 				
-let process prg =
+let process quiet prg =
 	let cmds = prg |> optimize_jumps |> resolve_labels cmd_size in  
-	DynArray.iter (cmd_to_lvm2 >> print_string) cmds;
+	if not quiet then	DynArray.iter (cmd_to_lvm2 >> print_string) cmds;
 	DynArray.to_list cmds |> List.map cmd_to_bc |> List.concat;;
 				
 let process_micro prg = prg |> optimize_jumps |> resolve_labels cmd_size_micro 

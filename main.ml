@@ -14,8 +14,8 @@ let write_le f i =
         output_byte f ((i lsr 16) land 0xff);
         output_byte f ((i lsr 24) land 0xff)
 
-let process prg show fname =
-	let maybe = if show then (fun f x -> f x) else (fun f x -> ()) in 
+let process prg make_bc quiet =
+	let maybe = if !verbose then (fun f x -> f x) else (fun f x -> ()) in 
 	prg |> maybe(Leo.show_code 0 >> print_endline);
 	maybe print_endline "\nexpanded Leo:\n";
 	let eprg = prg |> Leo.expand_code M.empty |> snd in
@@ -30,15 +30,23 @@ let process prg show fname =
 	let noisy_ccode = Noise.add_noise scode in
 	maybe (Leoc.show_code 0 >> print_endline) noisy_ccode;
 	maybe print_endline "\nasm:\n";
-	let bytecode = noisy_ccode |> Leoc.compile |> Triasm.process in
-	let f = open_out_bin (fname ^ ".bc") in 
-	List.iter (write_le f) bytecode;
-	close_out f;; 
+	let bytecode = noisy_ccode |> Leoc.compile |> Triasm.process quiet in
+	match make_bc with
+	| Some fname ->				
+			let f = open_out_bin fname in 
+			List.iter (write_le f) bytecode;
+			close_out f
+	| None -> ();; 
 
 let main () =
-	if Array.length Sys.argv < 2 then Printf.printf "Usage: %s <program.leo>" Sys.argv.(0) else
-	let verbose = Array.length Sys.argv > 2 in
+	if Array.length Sys.argv < 2 then Printf.printf "Usage: leoc <program.leo> [-v] [-q] [-bc bytecode_file]" else
 	begin 
+		verbose := Array.mem "-v" Sys.argv;
+		let quiet = Array.mem "-q" Sys.argv in
+		let make_bc = try 
+				let i = Array.findi ((=) "-bc") Sys.argv in
+				if i+1 < Array.length Sys.argv then Some(Sys.argv.(i+1)) else None
+	  	with Not_found -> None in		
   	let prog_text = Std.input_file Sys.argv.(1) in
 		let tokens =
 			let lbuf = Lexing.from_string prog_text in
@@ -48,13 +56,12 @@ let main () =
 				if token = Tokens.Leof then List.rev res' else loop res' in
 			loop [] in				 
     match Parse.parse_program tokens with
-		| Parsercomb.Parsed(ast, []) ->	process ast verbose Sys.argv.(1)
-		| Parsercomb.Parsed(ast, unparsed) ->
-				if List.for_all 
-					(fun tt -> let t = Parse.get0 tt in t = Tokens.Leol || t = Tokens.Leof) unparsed	
-				then  process ast verbose Sys.argv.(1)
-				else List.take 30 unparsed |> List.map (Parse.get0 >> Tokens.show_tok) |> String.concat " " 
-							|>	Printf.printf "Parsing problem near: %s\n" 
+		| Parsercomb.Parsed(ast, unparsed) when 
+				List.for_all (fun tt -> let t = Parse.get0 tt in t = Tokens.Leol || t = Tokens.Leof) unparsed 	
+			->  process ast make_bc quiet
+		| Parsercomb.Parsed(ast, unparsed) -> 
+				List.take 30 unparsed |> List.map (Parse.get0 >> Tokens.show_tok) |> String.concat " " 
+				|>	Printf.printf "Parsing problem near: %s\n" 
 		| Parsercomb.Failed -> print_endline "parsing failed"
   end;; 
          
