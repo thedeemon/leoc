@@ -1,0 +1,8 @@
+Bugs:
+* optimizer removes copies a=b even if b changes in loop
+* variable name clashing in functions(?)
+
+Todo:
+* find and extract repeating expressions
+* find loop invariants and move them out of loop
+
