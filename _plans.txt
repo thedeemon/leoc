@@ -1,6 +1,7 @@
 Bugs:
 * optimizer removes copies a=b even if b changes in loop
 * variable name clashing in functions(?)
+* some functions not found after adding noise
 
 Todo:
 * find and extract repeating expressions

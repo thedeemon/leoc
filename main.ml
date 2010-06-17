@@ -14,7 +14,7 @@ let write_le f i =
         output_byte f ((i lsr 16) land 0xff);
         output_byte f ((i lsr 24) land 0xff)
 
-let process prg make_bc quiet =
+let process prg make_bc quiet trash =
 	let maybe = if !verbose then (fun f x -> f x) else (fun f x -> ()) in 
 	prg |> maybe(Leo.show_code 0 >> print_endline);
 	maybe print_endline "\nexpanded Leo:\n";
@@ -27,7 +27,7 @@ let process prg make_bc quiet =
 	let scode = ccode |> Optim.optimize |> Leoc.simp_code in 
 	scode |> maybe (Leoc.show_code 0 >> print_endline);
 	maybe print_endline "\nnoisy LeoC:\n";
-	let noisy_ccode = Noise.add_noise scode in
+	let noisy_ccode = Noise.add_noise (Leoc.Trash trash :: scode) in
 	maybe (Leoc.show_code 0 >> print_endline) noisy_ccode;
 	maybe print_endline "\nasm:\n";
 	let bytecode = noisy_ccode |> Leoc.compile |> Triasm.process quiet in
@@ -39,10 +39,11 @@ let process prg make_bc quiet =
 	| None -> ();; 
 
 let main () =
-	if Array.length Sys.argv < 2 then Printf.printf "Usage: leoc <program.leo> [-v] [-q] [-bc bytecode_file]" else
+	if Array.length Sys.argv < 2 then Printf.printf "Usage: leoc <program.leo> [-v] [-q] [-tr] [-bc bytecode_file]" else
 	begin 
 		verbose := Array.mem "-v" Sys.argv;
 		let quiet = Array.mem "-q" Sys.argv in
+		let trash = Array.mem "-tr" Sys.argv in
 		let make_bc = try 
 				let i = Array.findi ((=) "-bc") Sys.argv in
 				if i+1 < Array.length Sys.argv then Some(Sys.argv.(i+1)) else None
@@ -58,7 +59,7 @@ let main () =
     match Parse.parse_program tokens with
 		| Parsercomb.Parsed(ast, unparsed) when 
 				List.for_all (fun tt -> let t = Parse.get0 tt in t = Tokens.Leol || t = Tokens.Leof) unparsed 	
-			->  process ast make_bc quiet
+			->  process ast make_bc quiet trash
 		| Parsercomb.Parsed(ast, unparsed) -> 
 				List.take 30 unparsed |> List.map (Parse.get0 >> Tokens.show_tok) |> String.concat " " 
 				|>	Printf.printf "Parsing problem near: %s\n" 
