@@ -453,6 +453,14 @@ and compile_stmt ctx = function
 								Write(Var(mkpath ivar []), LV(Var(mkpath jvar [])))
 								]) in
 						(match compile_stmt ctx st with _, Code code' -> code' | _, _ -> failwith "bad result of array copy compilation")
+				| TArray _, TInt,  _, _ 
+				| TArray _, TByte, _, _ -> 
+						let k = uid () in
+						let ivar = Printf.sprintf "i_%d" k  in
+						let st = For([ivar, LV lv], [
+								Write(Var(mkpath ivar []), e)
+								]) in
+						(match compile_stmt ctx st with _, Code code' -> code' | _, _ -> failwith "bad result of array copy compilation")
 				| _, _, _, _ -> failwith (Printf.sprintf "wrong types in assignment %s: %s and %s"
 									(show_stmt 0 orgst) (show_type lty) (show_type ty)) in
 			ctx, Code(code1 @ code2 @ code3)

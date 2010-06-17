@@ -38,6 +38,8 @@ let process prg make_bc quiet trash =
 			close_out f
 	| None -> ();; 
 
+let end_tokens = [Tokens.Leol; Tokens.Leof; Tokens.Lrem]
+
 let main () =
 	if Array.length Sys.argv < 2 then Printf.printf "Usage: leoc <program.leo> [-v] [-q] [-tr] [-bc bytecode_file]" else
 	begin 
@@ -58,7 +60,7 @@ let main () =
 			loop [] in				 
     match Parse.parse_program tokens with
 		| Parsercomb.Parsed(ast, unparsed) when 
-				List.for_all (fun tt -> let t = Parse.get0 tt in t = Tokens.Leol || t = Tokens.Leof) unparsed 	
+				List.for_all (Parse.get0 >> flip List.mem end_tokens) unparsed 	
 			->  process ast make_bc quiet trash
 		| Parsercomb.Parsed(ast, unparsed) -> 
 				List.take 30 unparsed |> List.map (Parse.get0 >> Tokens.show_tok) |> String.concat " " 
