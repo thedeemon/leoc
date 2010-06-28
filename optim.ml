@@ -49,6 +49,7 @@ let rec eval_stmt ctx = function
 			let vars'' = mark vars ch2 in
 			(vars'', chgd2), While(con', code2) 
 	| Print rv -> ctx, Print(eval_rvalue ctx rv) 
+	| Prchar rv -> ctx, Prchar(eval_rvalue ctx rv) 
 	| Alloc(lv, rv) -> 
 			let ctx' = match lv with
 				| Var nm ->	setvar ctx nm Complex
@@ -115,15 +116,13 @@ let show set = print_string "["; S.iter (Printf.printf "%s ") set; print_string 
 
 let rec collect_stmt ctx = function
 	| DefVar name -> def ctx name
-	| Assign(lv, rv) -> collect_asgn ctx lv rv 
-	| Assignb(lv, rv) -> collect_asgn ctx lv rv 
+	| Assign(lv, rv) | Assignb(lv, rv) | Alloc(lv, rv) -> collect_asgn ctx lv rv 
 	| Call(name, rvs) -> List.fold_left collect_rvalue ctx rvs  
 	| Defun(name, params, code) -> ctx
 	| Ret rvs -> List.fold_left collect_rvalue ctx rvs
 	| If(con, code1, code2) -> collect_code (collect_code (collect_cond ctx con) code1) code2
 	| While(con, code) -> collect_code (collect_cond ctx con) code
-	| Print rv -> collect_rvalue ctx rv
-	| Alloc(lv, rv) -> collect_asgn ctx lv rv
+	| Print rv | Prchar rv -> collect_rvalue ctx rv
 	| Comp code -> collect_code ctx code 
 	| Break | Trash _ -> ctx 
 									
@@ -158,7 +157,7 @@ and collect_code (defs, uses) code =
 	
 let rec clean_stmt uses st = match st with
 	| DefVar name | Assign(Var name, _) | Assignb(Var name, _) | Alloc(Var name, _) -> if S.mem name uses then Some st else None 
-	| Assign _	| Assignb _	| Call _	| Defun _ | Ret _	| Print _	| Break | Alloc _  | Trash _ -> Some st	
+	| Assign _	| Assignb _	| Call _	| Defun _ | Ret _	| Print _	| Prchar _ | Break | Alloc _  | Trash _ -> Some st	
 	| If(con, code1, code2) -> Some(If(con, clean_code uses code1, clean_code uses code2))
 	| While(con, code) -> Some(While(con, clean_code uses code))
 	| Comp code -> Some(Comp(clean_code uses code)) 

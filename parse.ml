@@ -37,6 +37,11 @@ let int_ = function
 	| TT(Lint i, _,_,_,_) :: ts -> log (string_of_int i); Parsed(i, ts)
 	| _ -> Failed
  			
+let string_ = function
+	| TT(Lstring s, _,_,_,_) :: ts ->
+			let vals = String.explode s |> List.map (fun c -> Leo.Val(int_of_char c)) in Parsed(vals, ts)
+  | _ -> Failed			  			
+			
 let params = tok Llparen >>> p_list0 ident (tok Lcomma) >>= fun ps -> tok Lrparen >>> return ps
 let opt_params = p_opt [] params 			
 
@@ -58,9 +63,10 @@ and simple_expr_r s = (
 	||| (tok Lnew >>> atype >>= fun ty -> tok Llbracket >>> p_list expr (tok Lcomma) >>= fun es -> tok Lrbracket >>> return (Leo.New(ty, es)))
 	||| (tok Lbackslash >>> p_list ident (tok Lcomma) >>= fun ps -> tok Lfollow >>> expr >>= fun e -> return(Leo.Lambda(ps, e)))
 	||| (ident >>= fun name -> tok Llparen >>> args >>= fun es -> tok Lrparen >>> 
-				return (if name="print" then Leo.Comp [Leo.Print(List.hd es)] else Leo.Call(name, es)))	
+				return (if name="print" then Leo.Comp [Leo.Print es] else Leo.Call(name, es)))	
 	||| (lvalue >>= fun lv -> return (Leo.LV lv))
 	||| (int_ >>= fun i -> return (Leo.Val i))
+	||| (string_ >>= fun vals -> return (Leo.New(Leo.AInt, vals))) 
 	||| (tok Llparen >>> expr >>= fun e -> tok Lrparen >>> return e)
 	)) s			
 	

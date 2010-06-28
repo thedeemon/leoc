@@ -10,6 +10,7 @@ and statement =
 	| Mov of dst * src
 	| Movb of dst * src
 	| Print of src
+	| Prchar of src
 	| New of dst * src
 	| Call of name * int
 	| Defun of name * code
@@ -33,6 +34,7 @@ let rec compile_stmt ctx = function
 	| Mov(d, a1) -> da (Asm.Mov(d, a1))
 	| Movb(d, a1) -> da (Asm.Movb(d, a1))
 	| Print a1 -> da (Asm.Print a1)
+	| Prchar a1 -> da (Asm.Prchar a1)
 	| New(d, a1) -> da (Asm.New(d, a1))
 	| Call(lab, a1) -> da (Asm.Call(lab, Asm.Val a1))
 	| Defun(name, code) -> 

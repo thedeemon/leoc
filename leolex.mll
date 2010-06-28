@@ -1,5 +1,13 @@
 {
-	open Tokens;;
+	open Tokens
+	open ExtLib
+
+	let mkstring s = 
+		let s1 = String.sub s 1 (String.length s - 2) in
+		let rec loop s = 
+			let r, s' = String.replace ~str:s ~sub:"\\n" ~by:"\n" in
+			if r then loop s' else s in
+		Lstring (loop s1);;
 }
 
 rule lexer = parse
@@ -29,6 +37,7 @@ rule lexer = parse
  | '{'                   { Llcurly }
  | '}'                   { Lrcurly }
  | '#' [^ '\n']*         { Lrem }
+ | '"' [^ '"'] * '"'     { mkstring(Lexing.lexeme lexbuf) } 
  | "do"                  { Ldo }
  | "end"                 { Lend }
  | "for"                 { Lfor }

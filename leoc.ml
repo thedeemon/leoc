@@ -13,6 +13,7 @@ and statement =
 	| If of condition * code * code
 	| While of condition * code
 	| Print of rvalue
+	| Prchar of rvalue
 	| Alloc of lvalue * rvalue
 	| Comp of code
 	| Break
@@ -51,6 +52,7 @@ and show_stmt n = function
 			Printf.sprintf "if %s {\n%s\n%s else {\n%s\n%s" (show_cond con) (show_code (n+1) code1) (tab n "}") (show_code (n+1) code2) (tab n "}")
 	| While(con, code) -> Printf.sprintf "while %s {\n%s\n%s" (show_cond con) (show_code (n+1) code) (tab n "}")
 	| Print rv -> Printf.sprintf "print(%s)" (show_rvalue rv) 
+	| Prchar rv -> Printf.sprintf "prchar(%s)" (show_rvalue rv) 
 	| Alloc(lv, rv) -> Printf.sprintf "%s <- new [%s]" (show_lvalue lv) (show_rvalue rv)
 	| Comp code -> Printf.sprintf "{\n%s\n%s" (show_code (n+1) code) (tab n "}")
 	| Break -> "break"
@@ -76,46 +78,64 @@ and show_cond = function
 	| Or(con1, con2) -> Printf.sprintf "%s || %s" (show_cond con1) (show_cond con2)
 	| Not con -> Printf.sprintf "not (%s)" (show_cond con);;
 
+(**************************** map **************************************)
+class mapper = 
+	object(self)
+		method map_code code = List.map self#map_stmt code
+		
+		method map_stmt = function
+			| Break | Trash _ | DefVar _ as x -> x
+			| Assign(lv, rv) -> Assign(self#map_lvalue lv, self#map_rvalue rv)
+			| Assignb(lv, rv) -> Assignb(self#map_lvalue lv, self#map_rvalue rv)
+			| Call(name, rvs) -> Call(name, List.map self#map_rvalue rvs)  
+			| Defun(name, params, code) -> Defun(name, params, self#map_code code) 
+			| Ret rvs -> Ret(List.map self#map_rvalue rvs)
+			| If(con, code1, code2) -> If(self#map_cond con, self#map_code code1, self#map_code code2)			
+			| While(con, code) -> While(self#map_cond con, self#map_code code)
+			| Print rv -> Print (self#map_rvalue rv) 
+			| Prchar rv -> Prchar (self#map_rvalue rv) 
+			| Alloc(lv, rv) -> Alloc(self#map_lvalue lv, self#map_rvalue rv)
+			| Comp code -> Comp(self#map_code code)
+			
+		method map_lvalue = function
+			| Var _ | PVar _ | LReg _  as x -> x
+  		| PArith(op, lv1, rv2) -> PArith(op, self#map_lvalue lv1, self#map_rvalue rv2)
+
+		method map_rvalue = function
+			| LV lv -> LV (self#map_lvalue lv) 
+			| Val _ as x -> x
+			| Arith(op, rv1, rv2) -> Arith(op, self#map_rvalue rv1, self#map_rvalue rv2)
+			| FCall(name, rvs) -> FCall(name, List.map self#map_rvalue rvs)
+			| Byte rv -> Byte(self#map_rvalue rv)
+
+		method map_cond = function
+			| Less(rv1, rv2) -> Less(self#map_rvalue rv1, self#map_rvalue rv2)
+			| Eq(rv1, rv2) -> Eq(self#map_rvalue rv1, self#map_rvalue rv2)
+			| And(con1, con2) -> And(self#map_cond con1, self#map_cond con2)
+			| Or(con1, con2) -> Or(self#map_cond con1, self#map_cond con2)
+			| Not con -> Not(self#map_cond con) 
+	end
+
 (**************************** subst ************************************)
 
-let rec subst_code subs_map code = 
-	List.map (subst_stmt subs_map) code
-	
-and subst_stmt smap = function
-	| DefVar _ as x-> x
-	| Assign(lv, rv) -> Assign(subst_lvalue smap lv, subst_rvalue smap rv)
-	| Assignb(lv, rv) -> Assignb(subst_lvalue smap lv, subst_rvalue smap rv)
-	| Call(name, rvs) -> Call(name, List.map (subst_rvalue smap) rvs)  
-	| Defun(name, params, code) -> Defun(name, params, subst_code smap code) 
-	| Ret rvs -> Ret(List.map (subst_rvalue smap) rvs)
-	| If(con, code1, code2) -> If(subst_cond smap con, subst_code smap code1, subst_code smap code2)			
-	| While(con, code) -> While(subst_cond smap con, subst_code smap code)
-	| Print rv -> Print (subst_rvalue smap rv) 
-	| Alloc(lv, rv) -> Alloc(subst_lvalue smap lv, subst_rvalue smap rv)
-	| Comp code -> Comp(subst_code smap code)
-	| Break | Trash _ as x -> x
+let subst_code_by_lvalue smap code =
+	let o = object
+			inherit mapper as super
+			method map_lvalue = function
+				| Var name as x -> (try M.find name smap with Not_found -> x)
+				| lv -> super#map_lvalue lv
+		end 
+	in o#map_code code;;
 
-and subst_lvalue smap = function
-	| Var name as x -> (try M.find name smap with Not_found -> x) 
-	| PVar _ | LReg _  as x -> x
-  | PArith(op, lv1, rv2) -> PArith(op, subst_lvalue smap lv1, subst_rvalue smap rv2)
-	
-and subst_rvalue smap = function
-	| LV lv -> LV (subst_lvalue smap lv) 
-	(*| Var name as x -> (try M.find name smap with Not_found -> x)*) 
-	| Val i as x -> x
-	| Arith(op, rv1, rv2) -> Arith(op, subst_rvalue smap rv1, subst_rvalue smap rv2)
-	| FCall(name, rvs) -> FCall(name, List.map (subst_rvalue smap) rvs)
-	(*| PVar name as x -> x*)
-	| Byte rv -> Byte(subst_rvalue smap rv)	
-
-and subst_cond smap = function
-	| Less(rv1, rv2) -> Less(subst_rvalue smap rv1, subst_rvalue smap rv2)
-	| Eq(rv1, rv2) -> Eq(subst_rvalue smap rv1, subst_rvalue smap rv2)
-	| And(con1, con2) -> And(subst_cond smap con1, subst_cond smap con2)
-	| Or(con1, con2) -> Or(subst_cond smap con1, subst_cond smap con2)
-	| Not con -> Not(subst_cond smap con);;
-
+let subst_code_by_stmt f code = 
+	let o = object
+			inherit mapper as super
+			method map_stmt st = 
+				match f st with Some st' -> st' | None -> super#map_stmt st
+		end 
+	in o#map_code code;;
+		
+		
 (**************************** simplify *********************************)
 
 let rec simp_code code = List.map simp_stmt code
@@ -130,6 +150,7 @@ and simp_stmt = function
 	| If(con, code1, code2) -> If(simp_cond con, simp_code code1, simp_code code2)			
 	| While(con, code) -> While(simp_cond con, simp_code code)
 	| Print rv -> Print (simp_rvalue rv) 
+	| Prchar rv -> Prchar (simp_rvalue rv) 
 	| Alloc(lv, rv) -> Alloc(simp_lvalue lv, simp_rvalue rv)
 	| Comp code -> Comp(simp_code code)
 	| Break | Trash _ as x -> x
@@ -256,7 +277,7 @@ let rec calc_retsize name code =
 	List.fold_left (fun szo cmd ->
 		match cmd with
 		| Ret rvs -> update (List.length rvs) szo
-		| DefVar _ 	| Assign _	| Assignb _	| Call _	| Defun _	| Print _ | Alloc _ | Break | Trash _ -> szo
+		| DefVar _ 	| Assign _	| Assignb _	| Call _	| Defun _	| Print _ | Prchar _ | Alloc _ | Break | Trash _ -> szo
 		| If(cond, code1, code2) -> 
 				let szo1 = Option.map_default (flip update szo) szo (calc_retsize name code1) in
 				Option.map_default (flip update szo1) szo1 (calc_retsize name code2) 
@@ -280,6 +301,9 @@ and compile_stmt ctx = function
 	| Print rv ->	
 			let code, src, _ = compile_rvalue ctx rv in
 			ctx, code @ [T.Print (strip_src src)]
+	| Prchar rv ->	
+			let code, src, _ = compile_rvalue ctx rv in
+			ctx, code @ [T.Prchar (strip_src src)]
 	| If(cond, then_code, else_code) -> 
 			let _, ccond = compile_cond ctx cond in
 			let _, cthen = compile_code ctx then_code in

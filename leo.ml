@@ -12,7 +12,7 @@ type code = statement list
 and statement =
 	| Def of name * name list * expr
 	| Write of lvalue * expr
-	| Print of expr
+	| Print of expr list
 	| Expr of expr
 	| For of (name * expr) list * code
 	| Ret of expr
@@ -59,7 +59,7 @@ let rec show_code n code =
 and show_stmt n = function
 	| Def(name, arglist, exp) -> Printf.sprintf "%s%s = %s" name (show_args arglist) (show_expr n exp)
 	| Write(lv, exp) -> Printf.sprintf "%s <- %s" (show_lvalue lv) (show_expr n exp)
-	| Print e -> Printf.sprintf "print(%s)" (show_expr n e)
+	| Print es -> Printf.sprintf "print(%s)" (List.map (show_expr n) es |> String.concat ", ")
 	| Expr e -> show_expr n e
 	| For(name_seq_list, code) ->
 			Printf.sprintf "for %s\n%s\n%send" (List.map (fun (nm, sq) -> Printf.sprintf "%s in %s" nm (show_expr 0 sq)) name_seq_list |> String.concat ", ")
@@ -134,7 +134,8 @@ and stmt_uses_fun funname = function
 	| Def(name, arglist, exp) ->
 			(if List.mem funname (name:: arglist) then failwith ("function name already used: "^funname);
 				is_recursive funname exp)
-	| Write(_, e) | Print e	| Ret e	| Expr e -> is_recursive funname e
+	| Write(_, e) | Ret e	| Expr e -> is_recursive funname e
+	| Print es -> List.exists (is_recursive funname) es
 	| For(name_seq_list, code) -> (List.exists (snd >> is_recursive funname) name_seq_list) || (List.exists (stmt_uses_fun funname) code)
 	| Typedef _ | Typing _ | Trash _ -> false
 	| While(con, code) -> cond_uses_fun funname con || (List.exists (stmt_uses_fun funname) code)
@@ -173,7 +174,7 @@ and expand_stmt ctx = function
 				ctx1, Some (Def(name, arglist, (*expand_expr ctx1*) exp))
 			else add_name ctx name (NFun(arglist, exp)), None
 	| Write(lv, e) -> ctx, Some(Write(expand_lvalue ctx lv, expand_expr ctx e))
-	| Print e -> ctx, Some(Print (expand_expr ctx e))
+	| Print es -> ctx, Some(Print (List.map (expand_expr ctx) es))
 	| Expr e -> ctx, Some(Expr (expand_expr ctx e))
 	| For(name_seq_list, code) ->
 			let ns = List.map (fun (n, s) -> n, expand_expr ctx s) name_seq_list in
@@ -268,7 +269,7 @@ and subst_stmt subs k = function
 			let subs2 = List.fold_left (fun m par_name -> M.remove par_name m) subs1 arglist in
 			subs1, Def(name1, arglist, subst_expr subs2 k exp)
 	| Write(lv, e) -> subs, Write(subst_lvalue subs k lv, subst_expr subs k e)
-	| Print e -> subs, Print(subst_expr subs k e)
+	| Print es -> subs, Print(List.map (subst_expr subs k) es)
 	| Expr e -> subs, Expr(subst_expr subs k e)
 	| For(name_seq_list, code) ->
 			let ns = List.map (fun (nm, sq) -> nm, subst_expr subs k sq) name_seq_list in
@@ -464,12 +465,25 @@ and compile_stmt ctx = function
 				| _, _, _, _ -> failwith (Printf.sprintf "wrong types in assignment %s: %s and %s"
 									(show_stmt 0 orgst) (show_type lty) (show_type ty)) in
 			ctx, Code(code1 @ code2 @ code3)
-	| Print e ->
-			let _, code, ty, rc = compile_expr ctx e in
-			(match ty, rc with
-				| TInt, [rv] -> ctx, Code (code @ [Leoc.Print rv])
-				| TByte, [rv] -> ctx, Code (code @ [Leoc.Print (Leoc.Byte rv)])
-				| _, _ -> failwith (Printf.sprintf "bad argument type for print(%s): %s" (show_expr 0 e) (show_type ty)))
+	| Print es ->
+			let print_code e = 
+				let _, code, ty, rc = compile_expr ctx e in
+				let prcode = 
+					match ty, rc with
+					| TInt, [rv] -> [Leoc.Print rv]
+					| TByte, [rv] -> [Leoc.Print (Leoc.Byte rv)]
+					| TArray _, _ ->
+							let k = uid () in
+							let ivar = Printf.sprintf "i_%d" k  in
+							let st = For([ivar, e], [
+									Print([LV(Var(mkpath ivar []))])
+								]) in
+							(match compile_stmt ctx st with 
+								| _, Code cd -> Leoc.subst_code_by_stmt (function Leoc.Print x -> Some(Leoc.Prchar x) | _ -> None) cd									 
+								| _ -> failwith "bad result of print compile")						 
+					| _, _ -> failwith (Printf.sprintf "bad argument type for print(%s): %s" (show_expr 0 e) (show_type ty)) in
+				code @ prcode  in
+			ctx, Code(List.map print_code es |> List.concat)
 	| Expr e ->
 			let _, code, ty, rc = compile_expr ctx e in
 			let code2, rc2 = save_call rc in
@@ -499,7 +513,7 @@ and compile_stmt ctx = function
 								d @ ds, i @ is, n @ ns, addvar ctx vname ity, M.add vname clv subs, cond:: conds) stuff ([],[],[], ctx, M.empty, []) in
 			let cond = List.fold_left (fun con cmp -> C.And(con, cmp)) (List.hd conds) (List.tl conds) in
 			let _, ccode = compile_code ctx1 code in
-			let ccode1 = Leoc.subst_code subs_map ccode in
+			let ccode1 = Leoc.subst_code_by_lvalue subs_map ccode in
 			let all_code = def_code @ init_code @ [Leoc.While(cond, ccode1 @ next_code)] in
 			ctx, Code [Leoc.Comp all_code]
 	| While(con, code) ->

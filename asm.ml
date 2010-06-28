@@ -13,6 +13,7 @@ open Commons;;
 #define JMPEQ (10 << CMDSHIFT) | XAA   //addr, a1, a2 : if a1 == a2 ip = addr
 #define JMP   (11 << CMDSHIFT)         //addr : ip = addr
 #define PRINT (12 << CMDSHIFT) | XA    //x, a1 : print a1
+#define PRCHAR (23 << CMDSHIFT) | XA    //x, a1 : print a1
 #define NEW   (13 << CMDSHIFT) | DA    //d, a1 : d = malloc(a)
 #define CALL  (14 << CMDSHIFT) | XA    //addr, a1 : fp += a1, call addr
 #define RET   (15 << CMDSHIFT)         //: return from call
@@ -29,6 +30,7 @@ type 'loc command =
 	| Jmpeq of 'loc * src * src
 	| Jmp of 'loc
 	| Print of src
+	| Prchar of src
 	| New of dst * src
 	| Call of 'loc * src
 	| Ret
@@ -53,6 +55,7 @@ let cmd_to_text = function
 	| Jmpeq(addr, a1, a2) -> Printf.sprintf "JMPEQ|R%c%c, %d, %d, %d, //%s\n" (src_pr a1) (src_pr a2) (fst addr) (src_n a1) (src_n a2) (snd addr)
 	| Jmp addr -> Printf.sprintf "JMP, %d, //%s\n" (fst addr)  (snd addr)
 	| Print a1 -> Printf.sprintf "PRINT|R%cR, 0, %d,\n" (src_pr a1) (src_n a1)
+	| Prchar a1 -> Printf.sprintf "PRCHAR|R%cR, 0, %d,\n" (src_pr a1) (src_n a1)
 	| New(d, a1) -> Printf.sprintf "NEW|%c%cR, %d, %d,\n" (dst_pr d) (src_pr a1) (dst_n d) (src_n a1)
 	| Call(addr, a1) -> Printf.sprintf "CALL|R%cR, %d, %d, //%s\n" (src_pr a1) (fst addr) (src_n a1) (snd addr)
 	| Ret -> "RET,\n"
@@ -61,7 +64,7 @@ let cmd_to_text = function
 let cmd_size = function 
 	(*String.enum (to_s cmd) |> Enum.filter_map (function ',' -> Some 1 | _ -> None) |> Enum.count*) 
 	| Arith _ | Jmple _ | Jmpeq _ -> 4
-	| Mov _ | Movb _ | New _ | Print _ | Call _ -> 3
+	| Mov _ | Movb _ | New _ | Print _ | Prchar _ | Call _ -> 3
 	| Jmp _ -> 2	| Ret -> 1	| Label _ -> 0;;
 
 module M = Map.Make(String);;
@@ -84,6 +87,7 @@ let resolve_labels sizer prg =
 		| Movb(d, a1) -> Movb(d, a1)
 		| New(d, a1) -> New(d, a1) 
 		| Print x -> Print x 
+		| Prchar x -> Prchar x 
 		| Ret -> Ret) prg;;  
 
 let label_indices prg = 
@@ -146,6 +150,7 @@ let cmd_to_micro = function
 				(src_pr a2) (src_n a2) (src_pr a1) (src_n a1) (fst addr) (snd addr)		
 	| Jmp addr -> Printf.sprintf "JMP, %d, //%s\n" (fst addr)  (snd addr)
 	| Print a1 -> Printf.sprintf "LOAD_SRC1_%c, %d,\nPRINT,\n" (src_pr a1) (src_n a1)
+	| Prchar a1 -> Printf.sprintf "LOAD_SRC1_%c, %d,\nPRCHAR,\n" (src_pr a1) (src_n a1)
 	| New(d, a1) -> Printf.sprintf "LOAD_DEST_%c, %d,\nLOAD_SRC1_%c, %d,\nNEW,\n" 
 										(dst_pr d) (dst_n d) (src_pr a1) (src_n a1)
 	| Call(addr, a1) -> Printf.sprintf "LOAD_SRC1_%c, %d,\nCALL, %d, //%s\n" (src_pr a1) (src_n a1) (fst addr) (snd addr)
@@ -157,7 +162,7 @@ let cmd_size_micro = function
 	| Jmple _ | Jmpeq _ -> 6
 	| Mov _ | Movb _  -> 5
 	| New _ -> 5 
-	| Print _ -> 3 
+	| Print _ | Prchar _ -> 3 
 	| Call _ -> 4
 	| Jmp _ -> 2	| Ret -> 1	| Label _ -> 0;;
 		
@@ -176,6 +181,7 @@ let cmd_to_lvm2 = function
 	| Jmpeq(addr, a1, a2) -> Printf.sprintf "JMPEQ|R%c%c, %d, %d, %d, //%s\n" (src_pr a1) (src_pr a2) (fst addr) (src_n a1) (src_n a2) (snd addr)
 	| Jmp addr -> Printf.sprintf "JMP, %d, //%s\n" (fst addr)  (snd addr)
 	| Print a1 -> Printf.sprintf "PRINT|R%cR, 0, %d,\n" (src_pr a1) (src_n a1)
+	| Prchar a1 -> Printf.sprintf "PRCHAR|R%cR, 0, %d,\n" (src_pr a1) (src_n a1)
 	| New(d, a1) -> Printf.sprintf "NEW|%c%cR, %d, %d,\n" (dst_pr d) (src_pr a1) (dst_n d) (src_n a1)
 	| Call(addr, a1) -> Printf.sprintf "CALL|R%cR, %d, %d, //%s\n" (src_pr a1) (fst addr) (src_n a1) (snd addr)
 	| Ret -> "RET,\n"
@@ -201,6 +207,7 @@ let op_mov_rv = cmd 19
 let op_mov_rr = cmd 20
 let op_inc = cmd 21 
 let op_inc4 = cmd 22
+let op_prchar = cmd 23
  
 let oper_code = function
 	| Add-> cmd 1 | Mul-> cmd 2 | Mod-> cmd 3 | Div-> cmd 5 | Sub-> cmd 4 | Xor-> cmd 6;;
@@ -226,6 +233,7 @@ let cmd_to_bc = function
 	| Jmpeq(addr, a1, a2) -> [op_jmpeq lor modi (RegDest 0) a1 a2; fst addr; src_n a1; src_n a2]
 	| Jmp addr -> [op_jmp; fst addr]
 	| Print a1 -> [op_print lor modi (RegDest 0) a1 (Reg 0); 0; src_n a1]
+	| Prchar a1 -> [op_prchar lor modi (RegDest 0) a1 (Reg 0); 0; src_n a1]
 	| New(d, a1) -> [op_new lor modi d a1 (Reg 0); dst_n d; src_n a1]
 	| Call(addr, a1) -> [op_call lor modi (RegDest 0) a1 (Reg 0); fst addr; src_n a1]
 	| Ret -> [op_ret]
