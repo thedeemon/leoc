@@ -12,7 +12,7 @@ let write_le f i =
         output_byte f (i land 0xff);
         output_byte f ((i lsr 8) land 0xff);
         output_byte f ((i lsr 16) land 0xff);
-        output_byte f ((i lsr 24) land 0xff)
+        output_byte f (let t = ((i lsr 24) land 0xff) in if i >= 0 then t else t lor 0x80)
 
 let process prg make_bc quiet trash =
 	let maybe = if !verbose then (fun f x -> f x) else (fun f x -> ()) in 
