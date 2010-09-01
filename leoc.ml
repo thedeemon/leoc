@@ -18,6 +18,7 @@ and statement =
   | Comp of code
   | Break
   | Trash of bool
+	| PostMessage of int * rvalue * rvalue
   
 and lvalue = Var of name | PVar of name  | LReg of int | PArith of oper * lvalue * rvalue
 and rvalue =
@@ -57,6 +58,7 @@ and show_stmt n = function
   | Comp code -> Printf.sprintf "{\n%s\n%s" (show_code (n+1) code) (tab n "}")
   | Break -> "break"
   | Trash on -> if on then "$trash" else "$notrash"
+	| PostMessage(msg, rv1, rv2) -> Printf.sprintf "PostMessage(%d, %s, %s)" msg (show_rvalue rv1) (show_rvalue rv2)
 
 and show_lvalue = function
   | Var name -> name 
@@ -96,6 +98,7 @@ class mapper =
       | Prchar rv -> Prchar (self#map_rvalue rv) 
       | Alloc(lv, rv) -> Alloc(self#map_lvalue lv, self#map_rvalue rv)
       | Comp code -> Comp(self#map_code code)
+			| PostMessage(msg, rv1, rv2) -> PostMessage(msg, self#map_rvalue rv1, self#map_rvalue rv2)
       
     method map_lvalue = function
       | Var _ | PVar _ | LReg _  as x -> x
@@ -153,6 +156,7 @@ and simp_stmt = function
   | Alloc(lv, rv) -> Alloc(simp_lvalue lv, simp_rvalue rv)
   | Comp code -> Comp(simp_code code)
   | Break | Trash _ as x -> x
+	| PostMessage(msg, rv1, rv2) -> PostMessage(msg, simp_rvalue rv1, simp_rvalue rv2) 
 
 and simp_rvalue = function
   | LV lv -> LV(simp_lvalue lv) 
@@ -276,7 +280,8 @@ let rec calc_retsize name code =
   List.fold_left (fun szo cmd ->
     match cmd with
     | Ret rvs -> update (List.length rvs) szo
-    | DefVar _   | Assign _  | Assignb _  | Call _  | Defun _  | Print _ | Prchar _ | Alloc _ | Break | Trash _ -> szo
+    | DefVar _   | Assign _  | Assignb _  | Call _  | Defun _  | Print _ | Prchar _ | Alloc _ | Break 
+		| Trash _ | PostMessage _ -> szo
     | If(cond, code1, code2) -> 
         let szo1 = Option.map_default (flip update szo) szo (calc_retsize name code1) in
         Option.map_default (flip update szo1) szo1 (calc_retsize name code2) 
@@ -303,6 +308,10 @@ and compile_stmt ctx = function
   | Prchar rv ->  
       let code, src, _ = compile_rvalue ctx rv in
       ctx, code @ [T.Prchar (strip_src src)]
+	| PostMessage(msg, rv1, rv2) ->
+      let code1, src1, _ = compile_rvalue ctx rv1 in
+      let code2, src2, _ = compile_rvalue ctx rv2 in
+      ctx, code1 @ code2 @ [T.PostMessage(msg, strip_src src1, strip_src src2)]				
   | If(cond, then_code, else_code) -> 
       let _, ccond = compile_cond ctx cond in
       let _, cthen = compile_code ctx then_code in

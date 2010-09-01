@@ -20,6 +20,7 @@ and statement =
 	| Typing of name * name
 	| Trash of bool
 	| While of condition * code
+	| PostMessage of int * expr * expr
 
 and expr =
 	| Val of int
@@ -72,6 +73,7 @@ and show_stmt n = function
 	| Typing(varname, typename) -> Printf.sprintf "%s : %s" varname typename
 	| Trash on -> if on then "$trash" else "$notrash"
 	| While(con, code) -> Printf.sprintf "while %s\n%s\n%send" (show_cond n con) (show_code (n + 1) code) (tab n "")
+	| PostMessage(msg, e1, e2) -> Printf.sprintf "PostMessage(%d, %s, %s)" msg (show_expr n e1) (show_expr n e2)
 
 and show_expr n = function
 	| Val i -> string_of_int i
@@ -139,6 +141,7 @@ and stmt_uses_fun funname = function
 	| For(name_seq_list, code) -> (List.exists (snd >> is_recursive funname) name_seq_list) || (List.exists (stmt_uses_fun funname) code)
 	| Typedef _ | Typing _ | Trash _ -> false
 	| While(con, code) -> cond_uses_fun funname con || (List.exists (stmt_uses_fun funname) code)
+	| PostMessage(msg, e1, e2) -> (is_recursive funname e1) || (is_recursive funname e2)
 
 and lvalue_uses_fun funname = function
 	| Var (name, _) -> name = funname
@@ -185,6 +188,7 @@ and expand_stmt ctx = function
 	| While(con, code) ->
 			let _, ecode = expand_code ctx code in
 			ctx, Some(While(expand_con ctx con, ecode))
+	| PostMessage(msg, e1, e2) -> ctx, Some(PostMessage(msg, expand_expr ctx e1, expand_expr ctx e2))
 
 and expand_lvalue ctx = function
 	| Var _ as x -> x
@@ -277,6 +281,8 @@ and subst_stmt subs k = function
 	| Ret e -> subs, Ret(subst_expr subs k e)
 	| Typedef _ | Typing _ | Trash _ as x -> subs, x
 	| While(con, code) -> subs, While(subst_con subs k con, subst_code subs k code)
+	| PostMessage(msg, e1, e2) -> subs, PostMessage(msg, subst_expr subs k e1, subst_expr subs k e2)
+
 
 and subst_lvalue_expr subs k = function
 	| Var path as x -> (try M.find (pathname path) subs with Not_found -> LV x)
@@ -531,6 +537,12 @@ and compile_stmt ctx = function
 	| Typedef (name, ty) -> struct_types := M.add name ty !struct_types; ctx, Code []
 	| Typing (varname, typename) -> addvar ctx varname (TStruct typename), Code []
 	| Trash on -> ctx, Code [Leoc.Trash on]
+	| PostMessage(msg, e1, e2) ->
+			let _, code1, ty1, rc1 = compile_expr ctx e1 
+			and _, code2, ty2, rc2 = compile_expr ctx e2 in
+			match ty1, ty2, rc1, rc2 with
+			| TInt, TInt, [rv1], [rv2] -> ctx, Code[Leoc.PostMessage(msg, rv1, rv2)]
+			| _, _, _, _ -> failwith "not ints in PostMessage" 
 
 and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.code * val_type * Leoc.rvalue list) = fun ctx -> function
 			| Val i -> ctx, [], TInt, [Leoc.Val i]

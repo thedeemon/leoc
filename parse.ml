@@ -45,6 +45,11 @@ let string_ = function
 let params = tok Llparen >>> p_list0 ident (tok Lcomma) >>= fun ps -> tok Lrparen >>> return ps
 let opt_params = p_opt [] params 			
 
+let funcall = function
+	| "print", es -> Leo.Comp [Leo.Print es]
+	| "PostMessage", [Leo.Val msg; e1; e2] -> Leo.Comp [Leo.PostMessage(msg, e1, e2)]
+	| name, es -> Leo.Call(name, es) 
+
 let rec (prepare : Tokens.token list -> ttoken list) = fun tok_list ->
 	List.fold_right (fun tk res ->
 		let rec v = TT(tk, lazy(simple_expr_r vlst), lazy(expr_r vlst), lazy(stmt_r vlst), lazy(lvalue_r vlst)) 
@@ -63,7 +68,8 @@ and simple_expr_r s = (
 	||| (tok Lnew >>> atype >>= fun ty -> tok Llbracket >>> p_list expr (tok Lcomma) >>= fun es -> tok Lrbracket >>> return (Leo.New(ty, es)))
 	||| (tok Lbackslash >>> p_list ident (tok Lcomma) >>= fun ps -> tok Lfollow >>> expr >>= fun e -> return(Leo.Lambda(ps, e)))
 	||| (ident >>= fun name -> tok Llparen >>> args >>= fun es -> tok Lrparen >>> 
-				return (if name="print" then Leo.Comp [Leo.Print es] else Leo.Call(name, es)))	
+				return (funcall (name, es)))	
+				(*return (if name="print" then Leo.Comp [Leo.Print es] else Leo.Call(name, es)))*)
 	||| (lvalue >>= fun lv -> return (Leo.LV lv))
 	||| (int_ >>= fun i -> return (Leo.Val i))
 	||| (string_ >>= fun vals -> return (Leo.New(Leo.AInt, vals))) 

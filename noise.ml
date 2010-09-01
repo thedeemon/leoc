@@ -93,6 +93,8 @@ let rec complicate_stmt = function
 	| Print _ | Prchar _ as x -> [], x  
 	| Alloc(lv, rv) -> let lst1, lv' = complicate_lv lv and lst2, rv' = complicate_rv rv in lst1 @ lst2, Alloc(lv', rv')
 	| Comp code -> let lst, code' = complicate_code true code in lst, Comp code'
+	| PostMessage(msg, rv1, rv2) -> let lst1, rv1' = complicate_rv rv1 and lst2, rv2' = complicate_rv rv2 in 
+																	lst1 @ lst2, PostMessage(msg, rv1', rv2')
 
 and complicate_lv = function
 	| Var _	| PVar _	| LReg _ as x -> [], x 

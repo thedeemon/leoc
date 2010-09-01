@@ -19,6 +19,7 @@ and statement =
 	| Ret
 	| Break
 	| Goto of name
+	| PostMessage of int * src * src
 
 and condition = 
 	| Less of code * src * code * src
@@ -60,6 +61,7 @@ let rec compile_stmt ctx = function
 	| Ret -> da Asm.Ret 
 	| Break -> (match ctx with end_lab::rest -> da(Asm.Jmp end_lab) | [] -> failwith "break from not a loop")
 	| Goto name -> da (Asm.Jmp name)
+	| PostMessage(msg, a1, a2) -> da (Asm.PostMessage(msg, a1, a2))
 
 and compile ctx prg = 
 	prg |> List.enum |> Enum.map (compile_stmt ctx >> DynArray.enum) |> Enum.concat |> DynArray.of_enum 

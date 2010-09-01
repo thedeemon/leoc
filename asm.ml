@@ -34,7 +34,8 @@ type 'loc command =
 	| New of dst * src
 	| Call of 'loc * src
 	| Ret
-	| Label of 'loc;;
+	| Label of 'loc
+	| PostMessage of int * src * src;;
 
 type 'loc program = 'loc command DynArray.t;;
 
@@ -59,11 +60,12 @@ let cmd_to_text = function
 	| New(d, a1) -> Printf.sprintf "NEW|%c%cR, %d, %d,\n" (dst_pr d) (src_pr a1) (dst_n d) (src_n a1)
 	| Call(addr, a1) -> Printf.sprintf "CALL|R%cR, %d, %d, //%s\n" (src_pr a1) (fst addr) (src_n a1) (snd addr)
 	| Ret -> "RET,\n"
-	| Label addr -> Printf.sprintf "//%d - %s:\n" (fst addr) (snd addr);;
+	| Label addr -> Printf.sprintf "//%d - %s:\n" (fst addr) (snd addr)
+	| PostMessage(msg, a1, a2) -> Printf.sprintf "POSTMSG|R%c%c, %d, %d, %d,\n" (src_pr a1) (src_pr a2) msg (src_n a1) (src_n a2) 
 	
 let cmd_size = function 
 	(*String.enum (to_s cmd) |> Enum.filter_map (function ',' -> Some 1 | _ -> None) |> Enum.count*) 
-	| Arith _ | Jmple _ | Jmpeq _ -> 4
+	| Arith _ | Jmple _ | Jmpeq _ | PostMessage _ -> 4
 	| Mov _ | Movb _ | New _ | Print _ | Prchar _ | Call _ -> 3
 	| Jmp _ -> 2	| Ret -> 1	| Label _ -> 0;;
 
@@ -88,8 +90,9 @@ let resolve_labels sizer prg =
 		| New(d, a1) -> New(d, a1) 
 		| Print x -> Print x 
 		| Prchar x -> Prchar x 
-		| Ret -> Ret) prg;;  
-
+		| Ret -> Ret
+		| PostMessage(msg, a1, a2) -> PostMessage(msg, a1, a2)) prg
+		  
 let label_indices prg = 
 	DynArray.enum prg |> Enum.foldi (fun i cmd m -> match cmd with Label str -> M.add str i m | _ -> m) M.empty;;
 
@@ -155,7 +158,8 @@ let cmd_to_micro = function
 										(dst_pr d) (dst_n d) (src_pr a1) (src_n a1)
 	| Call(addr, a1) -> Printf.sprintf "LOAD_SRC1_%c, %d,\nCALL, %d, //%s\n" (src_pr a1) (src_n a1) (fst addr) (snd addr)
 	| Ret -> "RET,\n"
-	| Label addr -> Printf.sprintf "//%d, %s:\n" (fst addr) (snd addr);;		
+	| Label addr -> Printf.sprintf "//%d, %s:\n" (fst addr) (snd addr)
+	| PostMessage _ -> ""		
 		
 let cmd_size_micro = function 
 	| Arith _ -> 7 
@@ -164,7 +168,7 @@ let cmd_size_micro = function
 	| New _ -> 5 
 	| Print _ | Prchar _ -> 3 
 	| Call _ -> 4
-	| Jmp _ -> 2	| Ret -> 1	| Label _ -> 0;;
+	| Jmp _ -> 2	| Ret -> 1	| Label _ | PostMessage _ -> 0;;
 		
 let cmd_to_lvm2 = function
 	| Arith(Add, RegDest dr, Reg r1, Val 1) when dr = r1 -> Printf.sprintf "INC, %d, 0, 0,\n" dr  
@@ -185,7 +189,8 @@ let cmd_to_lvm2 = function
 	| New(d, a1) -> Printf.sprintf "NEW|%c%cR, %d, %d,\n" (dst_pr d) (src_pr a1) (dst_n d) (src_n a1)
 	| Call(addr, a1) -> Printf.sprintf "CALL|R%cR, %d, %d, //%s\n" (src_pr a1) (fst addr) (src_n a1) (snd addr)
 	| Ret -> "RET,\n"
-	| Label addr -> Printf.sprintf "//%d - %s:\n" (fst addr) (snd addr);;		
+	| Label addr -> Printf.sprintf "//%d - %s:\n" (fst addr) (snd addr)
+	| PostMessage(msg, a1, a2) -> Printf.sprintf "POSTMSG|R%c%c, %d, %d, %d,\n" (src_pr a1) (src_pr a2) msg (src_n a1) (src_n a2)		
 	
 let cmd n = n (* n << CMDSHIFT, CMDSHIFT = 0 now *)
 let modshift = 8
@@ -208,6 +213,7 @@ let op_mov_rr = cmd 20
 let op_inc = cmd 21 
 let op_inc4 = cmd 22
 let op_prchar = cmd 23
+let op_postmsg = cmd 24
  
 let oper_code = function
 	| Add-> cmd 1 | Mul-> cmd 2 | Mod-> cmd 3 | Div-> cmd 5 | Sub-> cmd 4 | Xor-> cmd 6;;
@@ -237,7 +243,8 @@ let cmd_to_bc = function
 	| New(d, a1) -> [op_new lor modi d a1 (Reg 0); dst_n d; src_n a1]
 	| Call(addr, a1) -> [op_call lor modi (RegDest 0) a1 (Reg 0); fst addr; src_n a1]
 	| Ret -> [op_ret]
-	| Label addr -> []		
+	| Label addr -> []	
+	| PostMessage(msg, a1, a2) -> [op_postmsg lor modi (RegDest 0) a1 a2; msg; src_n a1; src_n a2]	
 				
 let process quiet prg =
 	let cmds = prg |> optimize_jumps |> resolve_labels cmd_size in  

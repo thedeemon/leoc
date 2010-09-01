@@ -57,6 +57,7 @@ let rec eval_stmt ctx = function
 			ctx', Alloc(lv, eval_rvalue ctx rv)
 	| Comp code -> let ctx', code', _ = eval_code ctx code in ctx', Comp code'
 	| Break | Trash _ as x -> ctx, x 
+	| PostMessage(msg, rv1, rv2) -> ctx, PostMessage(msg, eval_rvalue ctx rv1, eval_rvalue ctx rv2)
 
 and eval_assgn ctx lv rv = 		 
 	let lv' = eval_lvalue ctx lv and rv' = eval_rvalue ctx rv in
@@ -125,6 +126,7 @@ let rec collect_stmt ctx = function
 	| Print rv | Prchar rv -> collect_rvalue ctx rv
 	| Comp code -> collect_code ctx code 
 	| Break | Trash _ -> ctx 
+	| PostMessage(msg, rv1, rv2) -> List.fold_left collect_rvalue ctx [rv1; rv2]
 									
 and collect_asgn ctx lv rv =									
 	let ctx1 = collect_rvalue ctx rv in
@@ -157,7 +159,8 @@ and collect_code (defs, uses) code =
 	
 let rec clean_stmt uses st = match st with
 	| DefVar name | Assign(Var name, _) | Assignb(Var name, _) | Alloc(Var name, _) -> if S.mem name uses then Some st else None 
-	| Assign _	| Assignb _	| Call _	| Defun _ | Ret _	| Print _	| Prchar _ | Break | Alloc _  | Trash _ -> Some st	
+	| Assign _	| Assignb _	| Call _	| Defun _ | Ret _	| Print _	| Prchar _ | Break | Alloc _  
+	| Trash _ | PostMessage _ -> Some st	
 	| If(con, code1, code2) -> Some(If(con, clean_code uses code1, clean_code uses code2))
 	| While(con, code) -> Some(While(con, clean_code uses code))
 	| Comp code -> Some(Comp(clean_code uses code)) 
