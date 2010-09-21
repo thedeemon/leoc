@@ -2,8 +2,9 @@ Bugs:
 * optimizer removes copies a=b even if b changes in loop
 * variable name clashing in functions(?)
 * some functions not found after adding noise
+* f(args.s) expands to f(args)
 
 Todo:
 * find and extract repeating expressions
 * find loop invariants and move them out of loop
-
+* modify VM: allow writing to source1 and source2
