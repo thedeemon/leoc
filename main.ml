@@ -14,7 +14,7 @@ let write_le f i =
         output_byte f ((i lsr 16) land 0xff);
         output_byte f (let t = ((i lsr 24) land 0xff) in if i >= 0 then t else t lor 0x80)
 
-let process prg make_bc quiet trash =
+let process prg bc_handler quiet trash =
 	let maybe = if !verbose then (fun f x -> f x) else (fun f x -> ()) in 
 	prg |> maybe(Leo.show_code 0 >> print_endline);
 	maybe print_endline "\nexpanded Leo:\n";
@@ -31,12 +31,7 @@ let process prg make_bc quiet trash =
 	maybe (Leoc.show_code 0 >> print_endline) noisy_ccode;
 	maybe print_endline "\nasm:\n";
 	let bytecode = noisy_ccode |> Leoc.compile |> Triasm.process quiet in
-	match make_bc with
-	| Some fname ->				
-			let f = open_out_bin fname in 
-			List.iter (write_le f) bytecode;
-			close_out f
-	| None -> ();; 
+	bc_handler bytecode;;
 
 let end_tokens = [Tokens.Leol; Tokens.Leof; Tokens.Lrem]
 
@@ -50,6 +45,17 @@ let main () =
 				let i = Array.findi ((=) "-bc") Sys.argv in
 				if i+1 < Array.length Sys.argv then Some(Sys.argv.(i+1)) else None
 	  	with Not_found -> None in		
+		let bc_dump = Array.mem "-bcdump" Sys.argv in
+		let bc_handler =
+			match make_bc with
+			| Some fname -> (fun bytecode ->				
+					let f = open_out_bin fname in 
+					List.iter (write_le f) bytecode;
+					close_out f)
+			| None -> if bc_dump then (fun bytecode -> 
+					Printf.printf "bytecode:\n[";
+					List.iter (Printf.printf "%d, ") bytecode;
+					Printf.printf "]\n") else (fun bytecode -> ()) in
   	let prog_text = Std.input_file Sys.argv.(1) in
 		let tokens =
 			let lbuf = Lexing.from_string prog_text in
@@ -61,7 +67,7 @@ let main () =
     match Parse.parse_program tokens with
 		| Parsercomb.Parsed(ast, unparsed) when 
 				List.for_all (Parse.get0 >> flip List.mem end_tokens) unparsed 	
-			->  process ast make_bc quiet trash
+			->  process ast bc_handler quiet trash
 		| Parsercomb.Parsed(ast, unparsed) -> 
 				List.take 30 unparsed |> List.map (Parse.get0 >> Tokens.show_tok) |> String.concat " " 
 				|>	Printf.printf "Parsing problem near: %s\n" 
