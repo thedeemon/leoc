@@ -25,8 +25,7 @@ let mark vars ch = M.mapi (fun vname vvalue -> if S.mem vname ch then Complex el
 
 let rec eval_stmt ctx = function
 	| DefVar name as x -> defvar ctx name, x
-	| Assign(lv, rv)  -> let ctx', lv', rv' = eval_assgn ctx lv rv in ctx', Assign(lv', rv')
-	| Assignb(lv, rv) -> let ctx', lv', rv' = eval_assgn ctx lv rv in ctx', Assignb(lv', rv')			
+	| Assign(sz, lv, rv)  -> let ctx', lv', rv' = eval_assgn ctx lv rv in ctx', Assign(sz, lv', rv')
 	| Call(name, rvs) -> ctx, Call(name, List.map (eval_rvalue ctx) rvs)   
 	| Defun(name, params, code) ->
 			let ctx' = List.fold_left (fun cx par -> setvar cx par Complex) newctx params in  
@@ -117,7 +116,7 @@ let show set = print_string "["; S.iter (Printf.printf "%s ") set; print_string 
 
 let rec collect_stmt ctx = function
 	| DefVar name -> def ctx name
-	| Assign(lv, rv) | Assignb(lv, rv) | Alloc(lv, rv) -> collect_asgn ctx lv rv 
+	| Assign(_, lv, rv) | Alloc(lv, rv) -> collect_asgn ctx lv rv 
 	| Call(name, rvs) -> List.fold_left collect_rvalue ctx rvs  
 	| Defun(name, params, code) -> ctx
 	| Ret rvs -> List.fold_left collect_rvalue ctx rvs
@@ -158,8 +157,8 @@ and collect_code (defs, uses) code =
 	
 	
 let rec clean_stmt uses st = match st with
-	| DefVar name | Assign(Var name, _) | Assignb(Var name, _) | Alloc(Var name, _) -> if S.mem name uses then Some st else None 
-	| Assign _	| Assignb _	| Call _	| Defun _ | Ret _	| Print _	| Prchar _ | Break | Alloc _  
+	| DefVar name | Assign(_, Var name, _) | Alloc(Var name, _) -> if S.mem name uses then Some st else None 
+	| Assign _ | Call _	| Defun _ | Ret _	| Print _	| Prchar _ | Break | Alloc _  
 	| Trash _ | PostMessage _ -> Some st	
 	| If(con, code1, code2) -> Some(If(con, clean_code uses code1, clean_code uses code2))
 	| While(con, code) -> Some(While(con, clean_code uses code))

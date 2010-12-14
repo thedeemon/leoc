@@ -19,13 +19,12 @@ open Commons;;
 #define RET   (15 << CMDSHIFT)         //: return from call
 *)
 
-type dst = RegDest of int | PntDest of int;;
-type src = Reg of int | Pnt of int | Val of int;;
+type dst = RegDest of int | PntDest of int
+type src = Reg of int | Pnt of int | Val of int
 
 type 'loc command = 
 	| Arith of oper * dst * src * src
-	| Mov of dst * src
-	| Movb of dst * src
+	| Mov of arg_size * dst * src
 	| Jmple of 'loc * src * src
 	| Jmpeq of 'loc * src * src
 	| Jmp of 'loc
@@ -46,12 +45,14 @@ let src_n = function Reg n | Pnt n | Val n -> n;;
 let dst_of_src = function Reg r -> RegDest r | Pnt r -> PntDest r | Val _ -> failwith "Val in Asm.dst_of_src";;
 
 let oper_s = function
-	| Add->"ADD" | Mul->"MUL" | Mod->"MOD" | Div->"DIV" | Sub->"SUB" | Xor->"XOR";;
+	| Add->"ADD" | Mul->"MUL" | Mod->"MOD" | Div->"DIV" | Sub->"SUB" | Xor->"XOR"
+
+let arg_size_suff = function
+	| ASByte -> "B" | ASInt32 -> "D" | ASInt -> ""
 
 let cmd_to_text = function
 	| Arith(op, d, a1, a2) -> Printf.sprintf "%s|%c%c%c, %d, %d, %d,\n" (oper_s op) (dst_pr d) (src_pr a1) (src_pr a2) (dst_n d) (src_n a1) (src_n a2)  
-	| Mov(d, a1) -> Printf.sprintf "MOV|%c%cR, %d, %d,\n" (dst_pr d) (src_pr a1) (dst_n d) (src_n a1)
-	| Movb(d, a1) -> Printf.sprintf "MOVB|%c%cR, %d, %d,\n" (dst_pr d) (src_pr a1) (dst_n d) (src_n a1)
+	| Mov(sz, d, a1) -> Printf.sprintf "MOV%s|%c%cR, %d, %d,\n" (arg_size_suff sz) (dst_pr d) (src_pr a1) (dst_n d) (src_n a1)
 	| Jmple(addr, a1, a2) -> Printf.sprintf "JMPLE|R%c%c, %d, %d, %d, //%s\n" (src_pr a1) (src_pr a2) (fst addr) (src_n a1) (src_n a2) (snd addr)
 	| Jmpeq(addr, a1, a2) -> Printf.sprintf "JMPEQ|R%c%c, %d, %d, %d, //%s\n" (src_pr a1) (src_pr a2) (fst addr) (src_n a1) (src_n a2) (snd addr)
 	| Jmp addr -> Printf.sprintf "JMP, %d, //%s\n" (fst addr)  (snd addr)
@@ -66,7 +67,7 @@ let cmd_to_text = function
 let cmd_size = function 
 	(*String.enum (to_s cmd) |> Enum.filter_map (function ',' -> Some 1 | _ -> None) |> Enum.count*) 
 	| Arith _ | Jmple _ | Jmpeq _ | PostMessage _ -> 4
-	| Mov _ | Movb _ | New _ | Print _ | Prchar _ | Call _ -> 3
+	| Mov _ | New _ | Print _ | Prchar _ | Call _ -> 3
 	| Jmp _ -> 2	| Ret -> 1	| Label _ -> 0;;
 
 module M = Map.Make(String);;
@@ -85,8 +86,7 @@ let resolve_labels sizer prg =
 		| Call(lab, a1) -> Call(find lab, a1)
 		| Label lab -> Label (find lab)
 		| Arith(op, d, a1, a2) -> Arith(op, d, a1, a2) 
-		| Mov(d, a1) -> Mov(d, a1) 
-		| Movb(d, a1) -> Movb(d, a1)
+		| Mov(sz, d, a1) -> Mov(sz, d, a1) 
 		| New(d, a1) -> New(d, a1) 
 		| Print x -> Print x 
 		| Prchar x -> Prchar x 
@@ -107,7 +107,7 @@ let remove_dead_code prg =
 			match DynArray.get prg ip with
 			| Jmp lab ->
 					let target = M.find lab labels in
-					if !verbose then Printf.printf "# code[%d]: jmp %d\n" ip target;
+					(*if !verbose then Printf.printf "# code[%d]: jmp %d\n" ip target;*)
 					if target = ip + 1 then (live.(ip) <- false; go (ip+1)) else Queue.add target threads
 			| Ret -> ()
 			| Jmple(lab, _, _) | Call(lab, _) 	
@@ -143,8 +143,7 @@ let cmd_to_micro = function
 	| Arith(op, d, a1, a2) -> 
 			Printf.sprintf "LOAD_SRC2_%c, %d,\nLOAD_DEST_%c, %d,\nLOAD_SRC1_%c, %d,\n%s,\n" 
 				(src_pr a2) (src_n a2) (dst_pr d) (dst_n d) (src_pr a1) (src_n a1) (oper_s op)
-	| Mov(d, a1) -> Printf.sprintf "LOAD_DEST_%c, %d,\nLOAD_SRC1_%c, %d,\nMOV,\n" (dst_pr d) (dst_n d) (src_pr a1) (src_n a1)
-	| Movb(d, a1) -> Printf.sprintf "LOAD_DEST_%c, %d,\nLOAD_SRC1_%c, %d,\nMOVB,\n" (dst_pr d) (dst_n d) (src_pr a1) (src_n a1)
+	| Mov(sz, d, a1) -> Printf.sprintf "LOAD_DEST_%c, %d,\nLOAD_SRC1_%c, %d,\nMOV%s,\n" (dst_pr d) (dst_n d) (src_pr a1) (src_n a1) (arg_size_suff sz)
 	| Jmple(addr, a1, a2) -> 
 			Printf.sprintf "LOAD_SRC2_%c, %d,\nLOAD_SRC1_%c, %d,\nJMPLE, %d, //%s\n"
 				(src_pr a2) (src_n a2) (src_pr a1) (src_n a1) (fst addr) (snd addr)
@@ -164,7 +163,7 @@ let cmd_to_micro = function
 let cmd_size_micro = function 
 	| Arith _ -> 7 
 	| Jmple _ | Jmpeq _ -> 6
-	| Mov _ | Movb _  -> 5
+	| Mov _  -> 5
 	| New _ -> 5 
 	| Print _ | Prchar _ -> 3 
 	| Call _ -> 4
@@ -173,13 +172,13 @@ let cmd_size_micro = function
 let cmd_to_lvm2 = function
 	| Arith(Add, RegDest dr, Reg r1, Val 1) when dr = r1 -> Printf.sprintf "INC, %d, 0, 0,\n" dr  
 	| Arith(Add, RegDest dr, Reg r1, Val 4) when dr = r1 -> Printf.sprintf "INC4, %d, 0, 0,\n" dr   
+	| Arith(Add, RegDest dr, Reg r1, Val 8) when dr = r1 -> Printf.sprintf "INC8, %d, 0, 0,\n" dr   
 	| Arith(Add, RegDest dr, Reg r1, Val v2) -> Printf.sprintf "ADD_RRV, %d, %d, %d,\n" dr r1 v2  
 	| Arith(Add, RegDest dr, Reg r1, Reg r2) -> Printf.sprintf "ADD_RRR, %d, %d, %d,\n" dr r1 r2  
 	| Arith(op, d, a1, a2) -> Printf.sprintf "%s|%c%c%c, %d, %d, %d,\n" (oper_s op) (dst_pr d) (src_pr a1) (src_pr a2) (dst_n d) (src_n a1) (src_n a2)  
-	| Mov(RegDest dr, Reg r1) -> Printf.sprintf "MOV_RR, %d, %d,\n" dr r1
-	| Mov(RegDest dr, Val v1) -> Printf.sprintf "MOV_RV, %d, %d,\n" dr v1
-	| Mov(d, a1) -> Printf.sprintf "MOV|%c%cR, %d, %d,\n" (dst_pr d) (src_pr a1) (dst_n d) (src_n a1)
-	| Movb(d, a1) -> Printf.sprintf "MOVB|%c%cR, %d, %d,\n" (dst_pr d) (src_pr a1) (dst_n d) (src_n a1)
+	| Mov(ASInt, RegDest dr, Reg r1) -> Printf.sprintf "MOV_RR, %d, %d,\n" dr r1
+	| Mov(ASInt, RegDest dr, Val v1) -> Printf.sprintf "MOV_RV, %d, %d,\n" dr v1
+	| Mov(sz, d, a1) -> Printf.sprintf "MOV%s|%c%cR, %d, %d,\n" (arg_size_suff sz) (dst_pr d) (src_pr a1) (dst_n d) (src_n a1)
 	| Jmple(addr, Reg r1, Reg r2) -> Printf.sprintf "JMPLE_RR, %d, %d, %d, //%s\n"  (fst addr) r1 r2 (snd addr)
 	| Jmple(addr, a1, a2) -> Printf.sprintf "JMPLE|R%c%c, %d, %d, %d, //%s\n" (src_pr a1) (src_pr a2) (fst addr) (src_n a1) (src_n a2) (snd addr)
 	| Jmpeq(addr, a1, a2) -> Printf.sprintf "JMPEQ|R%c%c, %d, %d, %d, //%s\n" (src_pr a1) (src_pr a2) (fst addr) (src_n a1) (src_n a2) (snd addr)
@@ -214,6 +213,8 @@ let op_inc = cmd 21
 let op_inc4 = cmd 22
 let op_prchar = cmd 23
 let op_postmsg = cmd 24
+let op_inc8 = cmd 25
+let op_movd = cmd 26
  
 let oper_code = function
 	| Add-> cmd 1 | Mul-> cmd 2 | Mod-> cmd 3 | Div-> cmd 5 | Sub-> cmd 4 | Xor-> cmd 6;;
@@ -224,16 +225,19 @@ let src_mod = function Reg _ -> 0 | Pnt _ -> 1 | Val _ -> 2
 let modi d a1 a2 = 
 	(((dst_mod d) lsl 4) + ((src_mod a1) lsl 2) + (src_mod a2)) lsl modshift 
 		
+let mov_op = function
+	| ASByte -> op_movb | ASInt32 -> op_movd | ASInt -> op_mov		
+		
 let cmd_to_bc = function		
 	| Arith(Add, RegDest dr, Reg r1, Val 1) when dr = r1 -> [op_inc; dr; 0; 0]  
 	| Arith(Add, RegDest dr, Reg r1, Val 4) when dr = r1 -> [op_inc4; dr; 0; 0]   
+	| Arith(Add, RegDest dr, Reg r1, Val 8) when dr = r1 -> [op_inc8; dr; 0; 0]   
 	| Arith(Add, RegDest dr, Reg r1, Val v2) -> [op_add_rrv; dr; r1; v2]  
 	| Arith(Add, RegDest dr, Reg r1, Reg r2) -> [op_add_rrr; dr; r1; r2]  
 	| Arith(op, d, a1, a2) -> [oper_code op lor modi d a1 a2; dst_n d; src_n a1; src_n a2]  
-	| Mov(RegDest dr, Reg r1) -> [op_mov_rr; dr; r1]
-	| Mov(RegDest dr, Val v1) -> [op_mov_rv; dr; v1]
-	| Mov(d, a1) -> [op_mov lor modi d a1 (Reg 0); dst_n d; src_n a1]
-	| Movb(d, a1) -> [op_movb lor modi d a1 (Reg 0); dst_n d; src_n a1]
+	| Mov(ASInt, RegDest dr, Reg r1) -> [op_mov_rr; dr; r1]
+	| Mov(ASInt, RegDest dr, Val v1) -> [op_mov_rv; dr; v1]
+	| Mov(sz, d, a1) -> [(mov_op sz) lor modi d a1 (Reg 0); dst_n d; src_n a1]
 	| Jmple(addr, Reg r1, Reg r2) -> [op_jmple_rr; (fst addr); r1; r2]
 	| Jmple(addr, a1, a2) -> [op_jmple lor modi (RegDest 0) a1 a2; fst addr; src_n a1; src_n a2]
 	| Jmpeq(addr, a1, a2) -> [op_jmpeq lor modi (RegDest 0) a1 a2; fst addr; src_n a1; src_n a2]

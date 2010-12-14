@@ -1,7 +1,7 @@
 # see: http://www.ocaml.info/home/ocaml_sources.html#toc16
 
 # put here the names of your source files (in the right order)
-SOURCES = commons.ml asm.ml triasm.ml leoc.ml optim.ml noise.ml leo.ml tokens.ml leolex.mll parsercomb.ml parse.ml main.ml
+SOURCES = commons.ml asm.ml triasm.ml leoc.ml optim.ml noise.ml leo.ml tokens.ml leolex.mll parsercomb.ml parse.ml fib.ml main.ml
 
 # the name of the resulting executable
 RESULT  = leoc

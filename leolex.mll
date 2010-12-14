@@ -57,6 +57,7 @@ rule lexer = parse
  | "new"                 { Lnew }
  | "byte"                { Lbyte }
  | "int"                 { Ltint }
+ | "int32"               { Ltint32 }
  | "type"                { Ltype }
  | "$trash"              { Ltrash }
  | "$notrash"            { Lnotrash } 

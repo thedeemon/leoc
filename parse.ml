@@ -3,6 +3,8 @@ open Commons
 open Parsercomb
 open Tokens
 
+let int32_is_int = ref false
+
 type ttoken = 
 	TT of token 
 	* (Leo.expr, ttoken) Parsercomb.parse_result Lazy.t (* simple_expr *)
@@ -20,13 +22,14 @@ let tok tk s =
 	match s with
 	| h::tl when tk = get0 h -> log (show_tok tk); Parsed(tk, tl) 
 	| _ -> Failed
-	 	
+	 	 
 let eol = tok Leol ||| (tok Lrem >>> tok Leol)	
 let term = tok Lsemi ||| eol	
 let terms = p_plus term
 let opt_terms = p_opt () terms
 let opt_eols = p_many eol
-let atype = (tok Lbyte >>> return Leo.AByte) ||| (tok Ltint >>> return Leo.AInt) 
+let atype = (tok Lbyte >>> return ASByte) ||| (tok Ltint >>> return ASInt) 
+					||| (tok Ltint32 >>> (fun s -> (if !int32_is_int then Parsed(ASInt,s) else Parsed(ASInt32,s)))) 
 let then_ = tok Lthen ||| eol
 let else_ = opt_eols >>> tok Lelse >>> opt_eols
 let ident = function    
@@ -72,7 +75,7 @@ and simple_expr_r s = (
 				(*return (if name="print" then Leo.Comp [Leo.Print es] else Leo.Call(name, es)))*)
 	||| (lvalue >>= fun lv -> return (Leo.LV lv))
 	||| (int_ >>= fun i -> return (Leo.Val i))
-	||| (string_ >>= fun vals -> return (Leo.New(Leo.AInt, vals))) 
+	||| (string_ >>= fun vals -> return (Leo.New(ASInt, vals))) 
 	||| (tok Llparen >>> expr >>= fun e -> tok Lrparen >>> return e)
 	)) s			
 	
@@ -186,6 +189,8 @@ and field_def s = (
 		 >>= fun ftype -> return (name, ftype)   
 	) s
 					
-let parse_program prg = prepare prg |> stmts 
+let parse_program prg not64 = 
+	int32_is_int := not64;
+	prepare prg |> stmts 
 	
 

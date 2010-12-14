@@ -36,26 +36,37 @@ let process prg bc_handler quiet trash =
 let end_tokens = [Tokens.Leol; Tokens.Leof; Tokens.Lrem]
 
 let main () =
-	if Array.length Sys.argv < 2 then Printf.printf "Usage: leoc <program.leo> [-v] [-q] [-tr] [-bc bytecode_file]" else
+	if Array.length Sys.argv < 2 then (Fib.test(); Printf.printf "Usage: leoc <program.leo> [-v] [-q] [-tr] [-bc bytecode_file]") else
 	begin 
 		verbose := Array.mem "-v" Sys.argv;
 		let quiet = Array.mem "-q" Sys.argv in
 		let trash = Array.mem "-tr" Sys.argv in
+		let x64 = Array.mem "-64" Sys.argv in
+		let bc_dump = Array.mem "-bcdump" Sys.argv in
+		Leo.int_size := if x64 then 8 else 4;
 		let make_bc = try 
 				let i = Array.findi ((=) "-bc") Sys.argv in
 				if i+1 < Array.length Sys.argv then Some(Sys.argv.(i+1)) else None
 	  	with Not_found -> None in		
-		let bc_dump = Array.mem "-bcdump" Sys.argv in
 		let bc_handler =
 			match make_bc with
 			| Some fname -> (fun bytecode ->				
 					let f = open_out_bin fname in 
 					List.iter (write_le f) bytecode;
 					close_out f)
-			| None -> if bc_dump then (fun bytecode -> 
+			| None -> if bc_dump then (fun bytecode ->
+					let nb = ref 0 and nz = ref 0 and na = ref 0 in 
 					Printf.printf "bytecode:\n[";
-					List.iter (Printf.printf "%d, ") bytecode;
-					Printf.printf "]\n") else (fun bytecode -> ()) in
+					let rec listout bc = 
+						let l1,l2 =	try	List.split_nth 16 bc with List.Invalid_index _ -> bc, [] in
+						List.iter (fun x-> 
+							if x < 0 then incr nb else
+							if x = 0 then incr nz else incr na;
+							Printf.printf "%d, " x) l1;
+						print_endline "";
+						if l2=[] then () else listout l2 in
+					listout bytecode;	
+					Printf.printf "]\n nb=%d nz=%d na=%d\n" !nb !nz !na) else (fun bytecode -> ()) in
   	let prog_text = Std.input_file Sys.argv.(1) in
 		let tokens =
 			let lbuf = Lexing.from_string prog_text in
@@ -64,7 +75,7 @@ let main () =
 				let res' = token::res in
 				if token = Tokens.Leof then List.rev res' else loop res' in
 			loop [] in				 
-    match Parse.parse_program tokens with
+    match Parse.parse_program tokens (not x64) with
 		| Parsercomb.Parsed(ast, unparsed) when 
 				List.for_all (Parse.get0 >> flip List.mem end_tokens) unparsed 	
 			->  process ast bc_handler quiet trash

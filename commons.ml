@@ -6,6 +6,7 @@ external identity : 'a -> 'a = "%identity"
 let last_uid = ref 0
 let uid () = incr last_uid; !last_uid;;
 
+type arg_size = ASByte | ASInt32 | ASInt (* int is 32 or 64 bit *)
 type oper = Add | Mul | Mod | Div | Sub | Xor
 let show_op = function Add->"+" | Mul->"*" | Mod->"%" | Div->"/" | Sub->"-" | Xor->"^"
 let tab n s = (String.make n ' ') ^ s

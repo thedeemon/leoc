@@ -4,7 +4,7 @@ type token =
   | Land  | Lor  | Ldot | Ldot2  | Lcomma  | Llcurly  | Lrcurly
   | Lrem  | Lwrite  | Lfollow  | Lbackslash  | Llbracket  | Lrbracket | Lwhile
   | Ldo  | Lend  | Lfor  | Lin  | Lif  | Lthen  | Lelse  | Lreturn  | Lhead  | Ltail	| Lrange  
-	| Lbyte  | Ltint  | Lnew	| Ltype | Ltrash | Lnotrash
+	| Lbyte  | Ltint | Ltint32 | Lnew	| Ltype | Ltrash | Lnotrash
   | Lint of int | Lident of string | Lstring of string;;
 
 let show_tok = function
@@ -16,6 +16,6 @@ let show_tok = function
   | Ldo -> "do"  | Lend -> "end"  | Lfor -> "for"  | Lin -> "in"  | Lif -> "if"  | Lthen -> "then"  | Lelse -> "else"
   | Lreturn -> "return"  | Lhead -> ".head"  | Ltail -> ".tail"	| Lrange -> ".range"  | Lbyte -> "byte"
 	| Ltrash -> "$trash" | Lnotrash -> "$notrash" | Lwhile -> "while"
-	| Ltype -> "type"  | Ltint -> "int"  | Lnew -> "new"  | Lint i -> string_of_int i  | Lident s -> s
+	| Ltype -> "type"  | Ltint -> "int"  | Ltint32 -> "int32" | Lnew -> "new"  | Lint i -> string_of_int i  | Lident s -> s
 	| Lstring s -> "\"" ^ s ^ "\""  
   ;;

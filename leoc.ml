@@ -5,8 +5,7 @@ type name = string
 type code = statement list
 and statement = 
   | DefVar of name
-  | Assign of lvalue * rvalue
-  | Assignb of lvalue * rvalue
+  | Assign of arg_size * lvalue * rvalue
   | Call of name * rvalue list
   | Defun of name * name list * code
   | Ret of rvalue list
@@ -36,14 +35,15 @@ and condition =
   | Not of condition;;
 
 (*****************************pretty print ***********************************)
+let assign_op = function
+	| ASByte -> "<-b-" | ASInt -> "<-" | ASInt32 -> "<-d-"
 
 let rec show_code n code = 
-  code |> List.map (show_stmt n >> tab n) |> String.concat "\n"
-  
+  code |> List.map (show_stmt n >> tab n) |> String.concat "\n" 
+	
 and show_stmt n = function
   | DefVar name -> Printf.sprintf "var %s" name
-  | Assign(lv, rv) -> Printf.sprintf "%s <- %s" (show_lvalue lv) (show_rvalue rv)
-  | Assignb(lv, rv) -> Printf.sprintf "%s <-b- %s" (show_lvalue lv) (show_rvalue rv)
+  | Assign(sz, lv, rv) -> Printf.sprintf "%s %s %s" (show_lvalue lv) (assign_op sz) (show_rvalue rv)
   | Call(name, rvs) -> Printf.sprintf "%s(%s)" name (rvs |> List.map show_rvalue |> String.concat ", ")  
   | Defun(name, params, code) -> 
       Printf.sprintf "fun %s(%s)\n%s\n%s\n%s" name (params |> String.concat ", ") 
@@ -87,8 +87,7 @@ class mapper =
     
     method map_stmt = function
       | Break | Trash _ | DefVar _ as x -> x
-      | Assign(lv, rv) -> Assign(self#map_lvalue lv, self#map_rvalue rv)
-      | Assignb(lv, rv) -> Assignb(self#map_lvalue lv, self#map_rvalue rv)
+      | Assign(sz, lv, rv) -> Assign(sz, self#map_lvalue lv, self#map_rvalue rv)
       | Call(name, rvs) -> Call(name, List.map self#map_rvalue rvs)  
       | Defun(name, params, code) -> Defun(name, params, self#map_code code) 
       | Ret rvs -> Ret(List.map self#map_rvalue rvs)
@@ -144,8 +143,7 @@ let rec simp_code code = List.map simp_stmt code
   
 and simp_stmt = function
   | DefVar _ as x-> x
-  | Assign(lv, rv) -> Assign(simp_lvalue lv, simp_rvalue rv)
-  | Assignb(lv, rv) -> Assignb(simp_lvalue lv, simp_rvalue rv)
+  | Assign(sz, lv, rv) -> Assign(sz, simp_lvalue lv, simp_rvalue rv)
   | Call(name, rvs) -> Call(name, List.map simp_rvalue rvs)  
   | Defun(name, params, code) -> Defun(name, params, simp_code code) 
   | Ret rvs -> Ret(List.map simp_rvalue rvs)
@@ -280,7 +278,7 @@ let rec calc_retsize name code =
   List.fold_left (fun szo cmd ->
     match cmd with
     | Ret rvs -> update (List.length rvs) szo
-    | DefVar _   | Assign _  | Assignb _  | Call _  | Defun _  | Print _ | Prchar _ | Alloc _ | Break 
+    | DefVar _   | Assign _ | Call _  | Defun _  | Print _ | Prchar _ | Alloc _ | Break 
 		| Trash _ | PostMessage _ -> szo
     | If(cond, code1, code2) -> 
         let szo1 = Option.map_default (flip update szo) szo (calc_retsize name code1) in
@@ -322,22 +320,16 @@ and compile_stmt ctx = function
       let _, ccode = compile_code ctx code in
       ctx, [Triasm.While(ccond, ccode)]
   | Comp code -> let _, ccode = compile_code ctx code in ctx, ccode
-  | Assign(lv, rv) ->
+  | Assign(sz, lv, rv) ->
       let code1, dst, ctx1 = compile_lvalue ctx lv in
       let code2, src, ctx2 = compile_rvalue ctx1 rv in      
-      let ctx3, adst = use_dst ctx2 dst in        
-      (match List.rev code2, src with
-      | Triasm.Arith(op, d, a1, a2) :: rest, Tmp r ->        
-          freereg r ctx3, code1 @ (List.rev (Triasm.Arith(op, adst, a1, a2) :: rest))
-      | _, _ -> 
-          let ctx4, asrc = use_src ctx3 src in
-          ctx4, code1 @ code2 @ [T.Mov(adst, asrc)])
-  | Assignb(lv, rv) ->
-      let code1, dst, ctx1 = compile_lvalue ctx lv in
-      let code2, src, ctx2 = compile_rvalue ctx1 rv in      
-      let ctx3, adst = use_dst ctx2 dst in        
-      let ctx4, asrc = use_src ctx3 src in
-      ctx4, code1 @ code2 @ [T.Movb(adst, asrc)]
+      let ctx3, adst = use_dst ctx2 dst in    
+			(match sz, List.rev code2, src with
+      | ASInt, Triasm.Arith(op, d, a1, a2) :: rest, Tmp r ->        
+         	freereg r ctx3, code1 @ (List.rev (Triasm.Arith(op, adst, a1, a2) :: rest))
+      | _, _, _ -> 
+         	let ctx4, asrc = use_src ctx3 src in
+         	ctx4, code1 @ code2 @ [T.Mov(sz, adst, asrc)])
   | Defun(name, params, code) ->
       let nparams = List.length params in
       let retsize = Option.default 0 (calc_retsize name code) in
@@ -356,9 +348,9 @@ and compile_stmt ctx = function
       let phase1, phase2 = List.map (fun (par, rv) ->
         if List.mem par affected_params then
           let tmp = Printf.sprintf "ret_tmp_%d" (uid()) in
-          [DefVar tmp; Assign(Var tmp, rv)], Assign(Var par, LV(Var tmp))
+          [DefVar tmp; Assign(ASInt, Var tmp, rv)], Assign(ASInt, Var par, LV(Var tmp))
         else
-          [], Assign(Var par, rv)  ) actions |> List.split in       
+          [], Assign(ASInt, Var par, rv)  ) actions |> List.split in       
       let _, code = compile_code ctx ((List.concat phase1) @ phase2) in 
       ctx, code @ [Triasm.Goto name]      
   | Ret rvs ->
@@ -375,9 +367,9 @@ and compile_stmt ctx = function
         let dest_offs = i - delta in
         (try 
           let tmp = tmps.(find_offs dest_offs) in
-          Assign(Var tmp, rv)::ph1, Assign(LReg dest_offs, LV(Var tmp))::ph2  
+          Assign(ASInt, Var tmp, rv)::ph1, Assign(ASInt, LReg dest_offs, LV(Var tmp))::ph2  
         with Not_found -> 
-          Assign(LReg dest_offs, rv)::ph1, ph2)) ([],[]) in
+          Assign(ASInt, LReg dest_offs, rv)::ph1, ph2)) ([],[]) in
       let ctx3, cph1 = compile_code ctx2 (List.rev phase1) in
       let ctx4, cph2 = compile_code ctx3 (List.rev phase2) in
       ctx4, cph1 @ cph2 @ [Triasm.Ret]    
@@ -406,7 +398,7 @@ and compile_call ctx name rvs =
   let fp = try S.max_elt (List.hd ctx2).regs + 1 with Not_found -> 0 in
   let gap = max fn.return_size fn.nparams in
   let delta = fp + gap - fn.nparams in  
-  let pass_args = List.rev args |> List.mapi (fun i src -> T.Mov(Asm.RegDest(i+delta), strip_src src)) in
+  let pass_args = List.rev args |> List.mapi (fun i src -> T.Mov(ASInt, Asm.RegDest(i+delta), strip_src src)) in
   let ctx3 = Enum.init fn.return_size (fun i -> i + fp) |> Enum.fold usereg ctx in    
   arg_code @ pass_args @ [T.Call(name, fp + gap)], Src(Asm.Reg fp), ctx3
   
@@ -431,7 +423,7 @@ and compile_rvalue ctx = function
       let ctx1, r = newreg ctx in
       let code, src, ctx2 = compile_rvalue ctx1 rv in
       let ctx3, asrc = use_src ctx2 src in
-      code @ [Triasm.Mov(Asm.RegDest r, Asm.Val 0); Triasm.Movb(Asm.RegDest r, asrc)], Tmp r, ctx3
+      code @ [Triasm.Mov(ASInt, Asm.RegDest r, Asm.Val 0); Triasm.Mov(ASByte, Asm.RegDest r, asrc)], Tmp r, ctx3
   
 and compile_lvalue ctx = function 
   | Var name  -> [], Dst(Asm.RegDest (getvar ctx name)), ctx
@@ -463,7 +455,7 @@ and compile_cond ctx = function
 
 (****************************************************************)
 
-let prg = [
+(*let prg = [
   Defun("sumbytes", ["arr"; "len"], [
     DefVar "i";
     DefVar "sum";
@@ -515,6 +507,6 @@ let prg = [
     Assign(Local "i", Arith(Asm.Add, Var "i", Val 1))
   ])  *)
 ];;  
-      
+      *)
 (*prg |> show_code 0 |> print_endline;;      
 prg |> compile |> Triasm.process;;*)

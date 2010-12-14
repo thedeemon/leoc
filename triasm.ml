@@ -7,8 +7,7 @@ type name = string
 type code = statement list
 and statement = 
 	| Arith of oper * dst * src * src
-	| Mov of dst * src
-	| Movb of dst * src
+	| Mov of arg_size * dst * src
 	| Print of src
 	| Prchar of src
 	| New of dst * src
@@ -32,8 +31,7 @@ let da x = DynArray.of_list [x];;
 
 let rec compile_stmt ctx = function
 	| Arith(op, d, a1, a2) -> da (Asm.Arith(op, d, a1, a2))
-	| Mov(d, a1) -> da (Asm.Mov(d, a1))
-	| Movb(d, a1) -> da (Asm.Movb(d, a1))
+	| Mov(sz, d, a1) -> da (Asm.Mov(sz, d, a1))
 	| Print a1 -> da (Asm.Print a1)
 	| Prchar a1 -> da (Asm.Prchar a1)
 	| New(d, a1) -> da (Asm.New(d, a1))

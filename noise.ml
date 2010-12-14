@@ -76,8 +76,7 @@ let add_cond con =
 
 let rec complicate_stmt = function
 	| DefVar _ | 	Break | Trash _ as x -> [], x	
-	| Assign(lv, rv) -> let lst1, lv' = complicate_lv lv and lst2, rv' = complicate_rv rv in lst1 @ lst2, Assign(lv', rv') 
-	| Assignb(lv, rv) -> let lst1, lv' = complicate_lv lv and lst2, rv' = complicate_rv rv in lst1 @ lst2, Assignb(lv', rv')
+	| Assign(sz, lv, rv) -> let lst1, lv' = complicate_lv lv and lst2, rv' = complicate_rv rv in lst1 @ lst2, Assign(sz, lv', rv') 
 	| Call(name, rvs) -> let lsts, rvs' = List.map complicate_rv rvs |> List.split in	List.concat lsts, Call(name, rvs')   
 	| Defun(name, params, code) -> [], Defun(name, params, add_noise code)
 	| Ret rvs -> let lsts, rvs' = List.map complicate_rv rvs |> List.split in List.concat lsts, Ret rvs' 
@@ -162,7 +161,7 @@ and gen_noise = function
 	| Set(name, value) -> 
 			let op, (a,b) = compute value in
 			let rv1, op1 = var_or_val a and rv2, op2 = var_or_val b in						  
-			[Def name] @ op1 @ op2, Assign(Var name, Arith(op, rv1, rv2))	
+			[Def name] @ op1 @ op2, Assign(ASInt, Var name, Arith(op, rv1, rv2))	
 
 and reshape_code (oplist, code) = 
 	let rec reshape cur_level shape_code =

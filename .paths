@@ -6,3 +6,6 @@ tests
 tests
 tests
 tests
+.hg/store
+.hg/store/data
+tests
