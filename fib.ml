@@ -78,6 +78,22 @@ let decompress bytes =
 		let x, tail = fib_decode bitlist in
 		loop tail (if x=0 then res else x::res) in
 	loop bits [] |> decode_signs
+
+(*let fcode = [202; 162; 127; 209; 122; 189; 255; 47; 55; 151; 137; 240; 169; 247; 158; 27; 
+239; 125; 229; 5; 95; 121; 224; 121; 183; 128; 23; 151; 158; 158; 85; 19; 
+207; 79; 87; 222; 122; 188; 121; 226; 249; 231; 167; 171; 215; 248; 188; 63; 
+232; 188; 188; 35; 209; 21; 30; 61; 120; 30; 54; 250; 61; 109; 244; 248; 
+79; 31; 60; 188; 83; 233; 226; 189; 120; 121; 84; 79; 31; 35; 213; 243; 
+199; 171; 215; 143; 23; 135; 143; 145; 234; 248; 243; 197; 233; 231; 167; 151; 
+161; 62; 94; 91; 202; 64; 242; 248; 248; 162; 175; 94; 95; 7; 173; 188; 
+15; 141; 190; 158; 20; 245; 225; 229; 245; 79; 167; 200; 62; 61; 60; 94; 
+190; 249; 226; 170; 47; 94; 81; 226; 245; 243; 195; 209; 2; 94; 189; 10; 
+241; 122; 247; 192; 125; 42; 139; 215; 161; 19; 213; 235; 252; 94; 31; 244; 
+94; 94; 136; 122; 40; 27; 215; 209; 235; 111; 167; 132; 30; 188; 61; 94; 
+188; 241; 120; 121; 233; 229; 234; 39; 203; 227; 121; 72; 31; 30; 190; 183; 
+199; 129; 235; 111; 167; 169; 30; 188; 61; 94; 188; 120; 188; 60; 124; 143; 
+47; 144; 189; 20; 13; 235; 224; 245; 183; 211; 213; 79; 94; 24];; 
+						
 			
 let test () =
 	let lst = [2061; 1; 80; 20; 2; 1; 19; 3; 0; 11; 26; 514; 4; 3; 8; 0; 
@@ -92,7 +108,7 @@ let test () =
 158; 19; 7; 0; 1032; 7; 5; 12; 0; 7; 21; 5; 0; 0; 17; 145; 
 5; 6; 20; 5; 4; 18; 6; 4; 40; 11; 178; 1036; 0; 5; 22; 5; 
 0; 0; 17; 171; 5; 6] in
-	let enc = encode_signs lst in
+	(*let enc = encode_signs lst in
 	List.iter (Printf.printf "%d ") enc;
 	print_endline "\ndec:";
 	let dec = decode_signs enc in
@@ -100,13 +116,13 @@ let test () =
 	print_endline "\ncompr:";
 	let com = compress lst in
 	List.iter (Printf.printf "%d ") com;
-	Printf.printf "\nlen: org=%d com=%d\n" (List.length lst) (List.length com);
-	let decom = decompress com in
+	Printf.printf "\nlen: org=%d com=%d\n" (List.length lst) (List.length com);*)
+	let decom = decompress fcode in
 	List.iter (Printf.printf "%d ") decom;
 	(*print_endline "\nfibs:";
 	make_fibs 100;
 	DynArray.iter (Printf.printf "%d ") fibs;
 	let f = fib_encode 42 in
 	print_endline "\nf 42:";
-	List.iter (Printf.printf "%d ") f*);;
+	List.iter (Printf.printf "%d ") f*);;*)
 		

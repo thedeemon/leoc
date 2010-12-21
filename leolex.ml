@@ -14,7 +14,11 @@
 		let s = String.sub s 2 (String.length s - 2) in
 		Scanf.sscanf s "%x" Std.identity;;
 
-# 18 "leolex.ml"
+	let getpos : Lexing.lexbuf -> Commons.source_loc = fun lb -> lb.Lexing.lex_curr_p.Lexing.pos_lnum;;
+
+	module L = Lexing;;
+
+# 22 "leolex.ml"
 let __ocaml_lex_tables = {
   Lexing.lex_base = 
    "\000\000\199\255\078\000\153\000\163\000\203\255\204\255\205\255\
@@ -982,289 +986,289 @@ let rec lexer lexbuf =
 and __ocaml_lex_lexer_rec lexbuf __ocaml_lex_state =
   match Lexing.engine __ocaml_lex_tables __ocaml_lex_state lexbuf with
       | 0 ->
-# 18 "leolex.mll"
+# 22 "leolex.mll"
                          ( lexer lexbuf )
-# 988 "leolex.ml"
+# 992 "leolex.ml"
 
   | 1 ->
-# 19 "leolex.mll"
-                         ( Leol )
-# 993 "leolex.ml"
+# 23 "leolex.mll"
+                         ( lexbuf.L.lex_curr_p <- {lexbuf.L.lex_curr_p with L.pos_lnum = lexbuf.L.lex_curr_p.L.pos_lnum+1}; Leol, getpos lexbuf )
+# 997 "leolex.ml"
 
   | 2 ->
-# 20 "leolex.mll"
-                         ( Lpipe )
-# 998 "leolex.ml"
+# 24 "leolex.mll"
+                         ( Lpipe, getpos lexbuf )
+# 1002 "leolex.ml"
 
   | 3 ->
-# 21 "leolex.mll"
-                         ( Leq )
-# 1003 "leolex.ml"
+# 25 "leolex.mll"
+                         ( Leq, getpos lexbuf )
+# 1007 "leolex.ml"
 
   | 4 ->
-# 22 "leolex.mll"
-                         ( Lmod )
-# 1008 "leolex.ml"
+# 26 "leolex.mll"
+                         ( Lmod, getpos lexbuf )
+# 1012 "leolex.ml"
 
   | 5 ->
-# 23 "leolex.mll"
-                         ( Lxor )
-# 1013 "leolex.ml"
+# 27 "leolex.mll"
+                         ( Lxor, getpos lexbuf )
+# 1017 "leolex.ml"
 
   | 6 ->
-# 24 "leolex.mll"
-                         ( Lplus )
-# 1018 "leolex.ml"
+# 28 "leolex.mll"
+                         ( Lplus, getpos lexbuf )
+# 1022 "leolex.ml"
 
   | 7 ->
-# 25 "leolex.mll"
-                         ( Lminus )
-# 1023 "leolex.ml"
+# 29 "leolex.mll"
+                         ( Lminus, getpos lexbuf )
+# 1027 "leolex.ml"
 
   | 8 ->
-# 26 "leolex.mll"
-                         ( Lmul )
-# 1028 "leolex.ml"
+# 30 "leolex.mll"
+                         ( Lmul, getpos lexbuf )
+# 1032 "leolex.ml"
 
   | 9 ->
-# 27 "leolex.mll"
-                         ( Ldiv )
-# 1033 "leolex.ml"
+# 31 "leolex.mll"
+                         ( Ldiv, getpos lexbuf )
+# 1037 "leolex.ml"
 
   | 10 ->
-# 28 "leolex.mll"
-                         ( Llt )
-# 1038 "leolex.ml"
+# 32 "leolex.mll"
+                         ( Llt, getpos lexbuf )
+# 1042 "leolex.ml"
 
   | 11 ->
-# 29 "leolex.mll"
-                         ( Lgt )
-# 1043 "leolex.ml"
+# 33 "leolex.mll"
+                         ( Lgt, getpos lexbuf )
+# 1047 "leolex.ml"
 
   | 12 ->
-# 30 "leolex.mll"
-                         ( Lleq )
-# 1048 "leolex.ml"
+# 34 "leolex.mll"
+                         ( Lleq, getpos lexbuf )
+# 1052 "leolex.ml"
 
   | 13 ->
-# 31 "leolex.mll"
-                         ( Lgeq )
-# 1053 "leolex.ml"
+# 35 "leolex.mll"
+                         ( Lgeq, getpos lexbuf )
+# 1057 "leolex.ml"
 
   | 14 ->
-# 32 "leolex.mll"
-                         ( Lneq )
-# 1058 "leolex.ml"
+# 36 "leolex.mll"
+                         ( Lneq, getpos lexbuf )
+# 1062 "leolex.ml"
 
   | 15 ->
-# 33 "leolex.mll"
-                         ( Lwrite )
-# 1063 "leolex.ml"
+# 37 "leolex.mll"
+                         ( Lwrite, getpos lexbuf )
+# 1067 "leolex.ml"
 
   | 16 ->
-# 34 "leolex.mll"
-                 ( Lfollow )
-# 1068 "leolex.ml"
+# 38 "leolex.mll"
+                 ( Lfollow, getpos lexbuf )
+# 1072 "leolex.ml"
 
   | 17 ->
-# 35 "leolex.mll"
-                ( Llparen )
-# 1073 "leolex.ml"
+# 39 "leolex.mll"
+                ( Llparen, getpos lexbuf )
+# 1077 "leolex.ml"
 
   | 18 ->
-# 36 "leolex.mll"
-                ( Lrparen )
-# 1078 "leolex.ml"
+# 40 "leolex.mll"
+                ( Lrparen, getpos lexbuf )
+# 1082 "leolex.ml"
 
   | 19 ->
-# 37 "leolex.mll"
-                         ( Land )
-# 1083 "leolex.ml"
+# 41 "leolex.mll"
+                         ( Land, getpos lexbuf )
+# 1087 "leolex.ml"
 
   | 20 ->
-# 38 "leolex.mll"
-                         ( Lor )
-# 1088 "leolex.ml"
+# 42 "leolex.mll"
+                         ( Lor, getpos lexbuf )
+# 1092 "leolex.ml"
 
   | 21 ->
-# 39 "leolex.mll"
-                         ( Ldot2 )
-# 1093 "leolex.ml"
+# 43 "leolex.mll"
+                         ( Ldot2, getpos lexbuf )
+# 1097 "leolex.ml"
 
   | 22 ->
-# 40 "leolex.mll"
-                         ( Ldot )
-# 1098 "leolex.ml"
+# 44 "leolex.mll"
+                         ( Ldot, getpos lexbuf )
+# 1102 "leolex.ml"
 
   | 23 ->
-# 41 "leolex.mll"
-                         ( Llcurly )
-# 1103 "leolex.ml"
+# 45 "leolex.mll"
+                         ( Llcurly, getpos lexbuf )
+# 1107 "leolex.ml"
 
   | 24 ->
-# 42 "leolex.mll"
-                         ( Lrcurly )
-# 1108 "leolex.ml"
+# 46 "leolex.mll"
+                         ( Lrcurly, getpos lexbuf )
+# 1112 "leolex.ml"
 
   | 25 ->
-# 43 "leolex.mll"
-                         ( Lrem )
-# 1113 "leolex.ml"
+# 47 "leolex.mll"
+                         ( Lrem, getpos lexbuf )
+# 1117 "leolex.ml"
 
   | 26 ->
-# 44 "leolex.mll"
-                         ( mkstring(Lexing.lexeme lexbuf) )
-# 1118 "leolex.ml"
+# 48 "leolex.mll"
+                         ( mkstring(Lexing.lexeme lexbuf), getpos lexbuf )
+# 1122 "leolex.ml"
 
   | 27 ->
-# 45 "leolex.mll"
-                         ( Ldo )
-# 1123 "leolex.ml"
+# 49 "leolex.mll"
+                         ( Ldo, getpos lexbuf )
+# 1127 "leolex.ml"
 
   | 28 ->
-# 46 "leolex.mll"
-                         ( Lend )
-# 1128 "leolex.ml"
+# 50 "leolex.mll"
+                         ( Lend, getpos lexbuf )
+# 1132 "leolex.ml"
 
   | 29 ->
-# 47 "leolex.mll"
-                         ( Lfor )
-# 1133 "leolex.ml"
+# 51 "leolex.mll"
+                         ( Lfor, getpos lexbuf )
+# 1137 "leolex.ml"
 
   | 30 ->
-# 48 "leolex.mll"
-                         ( Lin )
-# 1138 "leolex.ml"
+# 52 "leolex.mll"
+                         ( Lin, getpos lexbuf )
+# 1142 "leolex.ml"
 
   | 31 ->
-# 49 "leolex.mll"
-                         ( Lif )
-# 1143 "leolex.ml"
+# 53 "leolex.mll"
+                         ( Lif, getpos lexbuf )
+# 1147 "leolex.ml"
 
   | 32 ->
-# 50 "leolex.mll"
-                         ( Lthen )
-# 1148 "leolex.ml"
+# 54 "leolex.mll"
+                         ( Lthen, getpos lexbuf )
+# 1152 "leolex.ml"
 
   | 33 ->
-# 51 "leolex.mll"
-                         ( Lelse )
-# 1153 "leolex.ml"
+# 55 "leolex.mll"
+                         ( Lelse, getpos lexbuf )
+# 1157 "leolex.ml"
 
   | 34 ->
-# 52 "leolex.mll"
-                         ( Lreturn )
-# 1158 "leolex.ml"
+# 56 "leolex.mll"
+                         ( Lreturn, getpos lexbuf )
+# 1162 "leolex.ml"
 
   | 35 ->
-# 53 "leolex.mll"
-                         ( Lwhile )
-# 1163 "leolex.ml"
+# 57 "leolex.mll"
+                         ( Lwhile, getpos lexbuf )
+# 1167 "leolex.ml"
 
   | 36 ->
-# 54 "leolex.mll"
-                         ( Lhead )
-# 1168 "leolex.ml"
+# 58 "leolex.mll"
+                         ( Lhead, getpos lexbuf )
+# 1172 "leolex.ml"
 
   | 37 ->
-# 55 "leolex.mll"
-                         ( Ltail )
-# 1173 "leolex.ml"
+# 59 "leolex.mll"
+                         ( Ltail, getpos lexbuf )
+# 1177 "leolex.ml"
 
   | 38 ->
-# 56 "leolex.mll"
-                         ( Lrange )
-# 1178 "leolex.ml"
+# 60 "leolex.mll"
+                         ( Lrange, getpos lexbuf )
+# 1182 "leolex.ml"
 
   | 39 ->
-# 57 "leolex.mll"
-                         ( Lnew )
-# 1183 "leolex.ml"
+# 61 "leolex.mll"
+                         ( Lnew, getpos lexbuf )
+# 1187 "leolex.ml"
 
   | 40 ->
-# 58 "leolex.mll"
-                         ( Lbyte )
-# 1188 "leolex.ml"
+# 62 "leolex.mll"
+                         ( Lbyte, getpos lexbuf )
+# 1192 "leolex.ml"
 
   | 41 ->
-# 59 "leolex.mll"
-                         ( Ltint )
-# 1193 "leolex.ml"
+# 63 "leolex.mll"
+                         ( Ltint, getpos lexbuf )
+# 1197 "leolex.ml"
 
   | 42 ->
-# 60 "leolex.mll"
-                         ( Ltint32 )
-# 1198 "leolex.ml"
+# 64 "leolex.mll"
+                         ( Ltint32, getpos lexbuf )
+# 1202 "leolex.ml"
 
   | 43 ->
-# 61 "leolex.mll"
-                         ( Ltype )
-# 1203 "leolex.ml"
+# 65 "leolex.mll"
+                         ( Ltype, getpos lexbuf )
+# 1207 "leolex.ml"
 
   | 44 ->
-# 62 "leolex.mll"
-                         ( Ltrash )
-# 1208 "leolex.ml"
+# 66 "leolex.mll"
+                         ( Ltrash, getpos lexbuf )
+# 1212 "leolex.ml"
 
   | 45 ->
-# 63 "leolex.mll"
-                         ( Lnotrash )
-# 1213 "leolex.ml"
+# 67 "leolex.mll"
+                         ( Lnotrash, getpos lexbuf )
+# 1217 "leolex.ml"
 
   | 46 ->
-# 64 "leolex.mll"
-                         ( Lcomma )
-# 1218 "leolex.ml"
+# 68 "leolex.mll"
+                         ( Lcomma, getpos lexbuf )
+# 1222 "leolex.ml"
 
   | 47 ->
-# 65 "leolex.mll"
-                         ( Lbackslash )
-# 1223 "leolex.ml"
+# 69 "leolex.mll"
+                         ( Lbackslash, getpos lexbuf )
+# 1227 "leolex.ml"
 
   | 48 ->
-# 66 "leolex.mll"
-                ( Lcolon )
-# 1228 "leolex.ml"
+# 70 "leolex.mll"
+                ( Lcolon, getpos lexbuf )
+# 1232 "leolex.ml"
 
   | 49 ->
-# 67 "leolex.mll"
-                ( Lsemi )
-# 1233 "leolex.ml"
+# 71 "leolex.mll"
+                ( Lsemi, getpos lexbuf )
+# 1237 "leolex.ml"
 
   | 50 ->
-# 68 "leolex.mll"
-                 ( Lquestion )
-# 1238 "leolex.ml"
+# 72 "leolex.mll"
+                 ( Lquestion, getpos lexbuf )
+# 1242 "leolex.ml"
 
   | 51 ->
-# 69 "leolex.mll"
-                         ( Llbracket )
-# 1243 "leolex.ml"
+# 73 "leolex.mll"
+                         ( Llbracket, getpos lexbuf )
+# 1247 "leolex.ml"
 
   | 52 ->
-# 70 "leolex.mll"
-                         ( Lrbracket )
-# 1248 "leolex.ml"
+# 74 "leolex.mll"
+                         ( Lrbracket, getpos lexbuf )
+# 1252 "leolex.ml"
 
   | 53 ->
-# 72 "leolex.mll"
-                                   ( Lint(hex (Lexing.lexeme lexbuf)) )
-# 1253 "leolex.ml"
+# 76 "leolex.mll"
+                                   ( Lint(hex (Lexing.lexeme lexbuf)), getpos lexbuf )
+# 1257 "leolex.ml"
 
   | 54 ->
-# 73 "leolex.mll"
-                         ( Lint (int_of_string (Lexing.lexeme lexbuf)) )
-# 1258 "leolex.ml"
+# 77 "leolex.mll"
+                         ( Lint (int_of_string (Lexing.lexeme lexbuf)), getpos lexbuf )
+# 1262 "leolex.ml"
 
   | 55 ->
-# 74 "leolex.mll"
-                                                               ( Lident (Lexing.lexeme lexbuf) )
-# 1263 "leolex.ml"
+# 78 "leolex.mll"
+                                                               ( Lident (Lexing.lexeme lexbuf), getpos lexbuf )
+# 1267 "leolex.ml"
 
   | 56 ->
-# 75 "leolex.mll"
-                         ( Leof )
-# 1268 "leolex.ml"
+# 79 "leolex.mll"
+                         ( Leof, getpos lexbuf )
+# 1272 "leolex.ml"
 
   | __ocaml_lex_state -> lexbuf.Lexing.refill_buff lexbuf; __ocaml_lex_lexer_rec lexbuf __ocaml_lex_state
 

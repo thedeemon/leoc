@@ -11,7 +11,8 @@ type struct_type = (name * field_type) list
 let int_size = ref 4
 
 type code = statement list
-and statement =
+and statement = raw_statement * source_loc
+and raw_statement =
 	| Def of name * name list * expr
 	| Write of lvalue * expr
 	| Print of expr list
@@ -24,7 +25,8 @@ and statement =
 	| While of condition * code
 	| PostMessage of int * expr * expr
 
-and expr =
+and expr = raw_expr * source_loc
+and raw_expr =
 	| Val of int
 	| LV of lvalue
 	| Arith of oper * expr * expr
@@ -49,6 +51,51 @@ and condition =
 	| Or of condition * condition
 	| Not of condition;;
 
+(************************** map ********************************)
+class mapper = object(self)
+  method map_code code = List.map self#map_stmt code
+	method map_stmt (stmt, sl) = self#map_raw_stmt stmt, sl	
+	method map_raw_stmt = function
+		| Def(name, name_list, expr) -> Def(name, name_list, self#map_expr expr)
+		| Write(lv, expr) -> Write(self#map_lvalue lv, self#map_expr expr)
+		| Print(expr_list) -> Print(List.map self#map_expr expr_list) 
+		| Expr expr -> Expr(self#map_expr expr)
+		| For(name_expr_list, code) -> For(List.map (fun (n,e) -> n, self#map_expr e) name_expr_list, self#map_code code)
+		| Ret expr -> Ret(self#map_expr expr)
+		| Typedef _ as x -> x
+		| Typing _ as x -> x
+		| Trash _ as x -> x
+		| While(cond, code) -> While(self#map_cond cond, self#map_code code)
+		| PostMessage(n, e1, e2) -> PostMessage(n, self#map_expr e1, self#map_expr e2)
+
+	method map_expr (e,sl) = self#map_raw_expr e, sl
+	method map_raw_expr = function
+		| Val _ as x -> x
+		| LV lv -> LV(self#map_lvalue lv)
+		| Arith(oper, e1, e2) -> Arith(oper, self#map_expr e1, self#map_expr e2)
+		| Call(name, expr_list) -> Call(name, List.map self#map_expr expr_list)
+		| Range(e1, e2) -> Range(self#map_expr e1, self#map_expr e2)
+		| Length e -> Length(self#map_expr e)
+		| Head e -> Head(self#map_expr e)
+		| Tail e -> Tail(self#map_expr e)
+		| New(atype, expr_list) -> New(atype, List.map self#map_expr expr_list)
+		| If(con, e1, e2o) -> If(self#map_cond con, self#map_expr e1, Option.map self#map_expr e2o)
+		| Lambda(name_list, expr) -> Lambda(name_list, self#map_expr expr)
+		| Comp code -> Comp(self#map_code code)
+
+	method map_lvalue = function
+		| Var _ as x -> x
+		| ArrElt(path, expr) -> ArrElt(path, self#map_expr expr)
+
+	method map_cond = function
+		| Less(e1, e2) -> Less(self#map_expr e1, self#map_expr e2)
+		| Eq(e1, e2) -> Eq(self#map_expr e1, self#map_expr e2)
+		| And(con1, con2) -> And(self#map_cond con1, self#map_cond con2)
+		| Or(con1, con2) -> Or(self#map_cond con1, self#map_cond con2)
+		| Not con -> Not(self#map_cond con)
+end
+
+
 (************************** pretty printing ********************************)
 
 let show_args lst =
@@ -57,7 +104,7 @@ let show_args lst =
 let show_atype = function ASInt -> "int" | ASByte -> "byte" | ASInt32 -> "int32";;
 
 let rec show_code n code =
-	code |> List.map (show_stmt n >> tab n) |> String.concat "\n"
+	code |> List.map (fst >> show_stmt n >> tab n) |> String.concat "\n"
 
 and show_stmt n = function
 	| Def(name, arglist, exp) -> Printf.sprintf "%s%s = %s" name (show_args arglist) (show_expr n exp)
@@ -77,7 +124,7 @@ and show_stmt n = function
 	| While(con, code) -> Printf.sprintf "while %s\n%s\n%send" (show_cond n con) (show_code (n + 1) code) (tab n "")
 	| PostMessage(msg, e1, e2) -> Printf.sprintf "PostMessage(%d, %s, %s)" msg (show_expr n e1) (show_expr n e2)
 
-and show_expr n = function
+and show_expr n (expr,sl) = match expr with
 	| Val i -> string_of_int i
 	| LV lv -> show_lvalue lv
 	| Arith(op, e1, e2) -> Printf.sprintf "(%s %s %s)" (show_expr n e1) (show_op op) (show_expr n e2)
@@ -113,7 +160,7 @@ and show_ftype = function
 and show_num = function NVal i -> string_of_int i | NVar nm -> nm;;
 (*********************** recursion check ***********************************)
 
-let rec is_recursive funname = function
+let rec is_recursive funname (exp,sl) = match exp with
 	| Val i -> false
 	| LV lv -> lvalue_uses_fun funname lv
 	| Arith(op, e1, e2) -> (is_recursive funname e1) || (is_recursive funname e2)
@@ -134,7 +181,7 @@ and cond_uses_fun funname = function
 	| Or(con1, con2) -> (cond_uses_fun funname con1) || (cond_uses_fun funname con2)
 	| Not con -> cond_uses_fun funname con
 
-and stmt_uses_fun funname = function
+and stmt_uses_fun funname (stmt,sl) = match stmt with
 	| Def(name, arglist, exp) ->
 			(if List.mem funname (name:: arglist) then failwith ("function name already used: "^funname);
 				is_recursive funname exp)
@@ -161,13 +208,75 @@ let mkpath name fields = name, fields
 let mkvar name = LV(Var(name, []))
 
 let rename map name =
-	try (match M.find name map with LV(Var p) -> pathname p | _ -> name) with Not_found -> name
+	try (match M.find name map with (LV(Var p),_) -> pathname p | _ -> name) with Not_found -> name
+	
+(*let rec expand_code ctx code =
+	let ctx2, code2 =
+		List.fold_left (fun (cx, cd) stmt -> let ctx1, st1 = expand_stmt cx stmt in ctx1, st1:: cd) (ctx, []) code in
+	ctx2, (code2 |> List.enum |> Enum.filter_map identity |> List.of_enum |> List.rev)*)
 
 let rec expand_code ctx code =
 	let ctx2, code2 =
-		List.fold_left (fun (cx, cd) stmt -> let ctx1, st1 = expand_stmt cx stmt in ctx1, st1:: cd) (ctx, []) code in
-	ctx2, (code2 |> List.enum |> Enum.filter_map identity |> List.of_enum |> List.rev)
+		List.fold_left (fun (cx, cd) (rstmt, sl) -> 
+			let o = expander cx in
+			let ctx1, st1 = o#expand_raw_stmt rstmt in
+		  ctx1, (st1, sl):: cd) (ctx, []) code in
+	code2 |> List.enum |> Enum.map (fun (sto, sl)-> Option.map (fun st-> st,sl) sto) |>
+	Enum.filter_map identity |> List.of_enum |> List.rev
 
+and expander ctx = object(self)
+	inherit mapper as super
+			
+	method map_raw_expr = function
+		| Call(name, elist) -> self#expand_call name elist
+		| e -> super#map_raw_expr e
+			
+ 	method map_code code = expand_code ctx code
+			
+	method expand_raw_stmt = function
+		| Def(name, arglist, (Lambda(params, e),_)) ->
+				self#expand_raw_stmt (Def(name, arglist @ params, e))
+		| Def(name, arglist, exp) ->
+				if arglist = [] then add_name ctx name NValue, Some (Def(name, [], self#map_expr exp))
+				else
+				if is_recursive name exp then
+					let ctx1 = add_name ctx name (NRecFun (List.length arglist)) in
+					ctx1, Some (Def(name, arglist, (*expand_expr ctx1*) exp))
+				else add_name ctx name (NFun(arglist, exp)), None
+		| stmt -> ctx, Some(self#map_raw_stmt stmt)
+
+	method expand_call name elist =
+		try
+			(match get_name ctx name with
+			| NValue -> failwith (Printf.sprintf "'%s' is not a function" name)
+			| NFun(name_list, exp) ->
+					if List.length name_list <> List.length elist then failwith (Printf.sprintf "wrong number of arguments for '%s'" name);
+					let k = uid () in
+					let subs, calcs = List.combine name_list elist |> List.map (argval k) |> List.split in
+					(*Printf.printf "expanding %s(%s):\n" name (String.join ", " name_list);*)  
+					let subs_map = List.fold_left2 (fun m argname argexp -> 
+						(*Printf.printf "%s => %s;\n" argname (show_expr 0 argexp);*)
+						M.add argname argexp m) M.empty name_list subs in
+					(*Printf.printf "body:\n%s\n" (show_expr 0 exp);*)
+					let e = subst_expr subs_map k exp in
+					let precalcs = (List.enum calcs |> Enum.filter_map identity |> List.of_enum) @ [Expr e, no_source] in
+					Comp(expand_code ctx precalcs)
+			| NRecFun np ->
+					let narg = List.length elist in
+					if np = narg then Call(name, List.map self#map_expr elist)
+					else failwith (Printf.sprintf "wrong number of arguments for '%s' (%d instead of %d)" name narg np))
+		with Not_found -> failwith (Printf.sprintf "function '%s' not found" name)
+end 
+
+and argval k (argname, argexp) =
+	let var = Printf.sprintf "%s_%d" argname k in
+	let sl = snd argexp in
+	match fst argexp with
+	| Val _ | LV(Var _)	| Range _ -> argexp, None
+	| Arith _ | Call _ | LV(ArrElt _) | Length _ | Head _ | Tail _ | New _ | If _ | Comp _ -> 
+			(mkvar var, sl), Some(Def(var, [], argexp), sl)
+	| Lambda(name_list, e) -> (mkvar var, sl), Some(Def(var, name_list, e), sl)
+(*
 and expand_stmt ctx = function
 	| Def(name, arglist, Lambda(params, e)) ->
 			expand_stmt ctx (Def(name, arglist @ params, e))
@@ -217,14 +326,9 @@ and expand_con ctx = function
 	| Or(con1, con2) -> Or(expand_con ctx con1, expand_con ctx con2)
 	| Not con -> Not(expand_con ctx con)
 
-and argval k (argname, argexp) =
-	let var = Printf.sprintf "%s_%d" argname k in
-	match argexp with
-	| Val _ | LV(Var _)	| Range _ -> argexp, None
-	| Arith _ | Call _ | LV(ArrElt _) | Length _ | Head _ | Tail _ | New _ | If _ | Comp _ -> mkvar var, Some(Def(var, [], argexp))
-	| Lambda(name_list, e) -> mkvar var, Some(Def(var, name_list, e))
+*)
 
-and expand_call ctx name elist =
+(*and expand_call ctx name elist =
 	try
 		(match get_name ctx name with
 			| NValue -> failwith (Printf.sprintf "'%s' is not a function" name)
@@ -240,9 +344,48 @@ and expand_call ctx name elist =
 					let narg = List.length elist in
 					if np = narg then Call(name, List.map (expand_expr ctx) elist)
 					else failwith (Printf.sprintf "wrong number of arguments for '%s' (%d instead of %d)" name narg np))
-	with Not_found -> failwith (Printf.sprintf "function '%s' not found" name)
+	with Not_found -> failwith (Printf.sprintf "function '%s' not found" name)*)
 
-and subst_expr subs_map k = function
+and subster (subs_map: expr Commons.M.t) k = object(self)
+	inherit mapper as super
+	method map_code code = subst_code subs_map k code
+	
+	method subst_stmt (st, sl) = match st with  
+		| Def(name, arglist, exp) ->
+				let name1 = Printf.sprintf "%s_%d" name k in
+				let subs1 = M.add name ((mkvar name1),sl) subs_map in
+				let subs2 = List.fold_left (fun m par_name -> M.remove par_name m) subs1 arglist in
+				subs1, Def(name1, arglist, subst_expr subs2 k exp)
+		| stmt -> subs_map, self#map_raw_stmt stmt
+
+	method map_lvalue lv =
+		match self#subst_lvalue_expr lv with 
+		| LV lv, _ -> lv
+		| e -> failwith (Printf.sprintf "lvalue turned into expr after subst:\n%s\n%s #line %d" 
+											(show_lvalue lv) (show_expr 0 e) (snd e))
+	
+	method subst_lvalue_expr = function
+		| Var path as x -> (try M.find (pathname path) subs_map with Not_found -> LV x, no_source)
+		| ArrElt(path, e) -> LV (ArrElt(mkpath (rename subs_map (pathname path)) (pathflds path), self#map_expr e)), no_source
+
+	method map_raw_expr = function
+		| Call(name, elist) -> Call(rename subs_map name, List.map self#map_expr elist)
+		| LV lv -> self#subst_lvalue_expr lv |> fst
+		| e -> super#map_raw_expr e
+end
+
+and subst_code subs_map k code =
+	let subs, code2 =
+		List.fold_left (fun (subs, cd) stmt ->
+			let o = subster subs k in
+			let subs1, st1 = o#subst_stmt stmt				
+			in subs1, (st1, snd stmt):: cd) (subs_map, []) code in
+	List.rev code2
+
+and subst_expr subs k exp = 
+	let o = subster subs k in	o#map_expr exp
+	
+(*and subst_expr subs_map k = function
 	| Val i as x -> x
 	| LV lv -> subst_lvalue_expr subs_map k lv
 	| Arith(op, e1, e2) -> Arith(op, subst_expr subs_map k e1, subst_expr subs_map k e2)
@@ -293,7 +436,7 @@ and subst_lvalue_expr subs k = function
 and subst_lvalue subs k lv =
 	match subst_lvalue_expr subs k lv with
 	| LV lv -> lv
-	| e -> failwith "lvalue turned into expr after subst";;
+	| e -> failwith "lvalue turned into expr after subst";;*)
 
 (*************************** compile ********************************)
 
@@ -345,12 +488,12 @@ let save_call = function
 	| [C.FCall(name, rvs)] -> [C.Call(name, rvs)], []
 	| x -> [], x
 
-let rec returnize = function
-	| If(con, e1, e2o) -> If(con, returnize e1, Option.map returnize e2o)
+let rec returnize (exp,loc) = match exp with
+	| If(con, e1, e2o) -> If(con, returnize e1, Option.map returnize e2o), loc
 	| Comp code as x -> (match List.rev code with
-				| Expr e :: rest -> Comp(List.rev (Expr(returnize e) :: rest))
-				| _ -> x)
-	| e -> Comp [Ret e]
+				| (Expr e, sl) :: rest -> Comp(List.rev ((Expr(returnize e), sl) :: rest))
+				| _ -> x), loc
+	| e -> Comp [Ret(e,loc), loc], loc
 
 let rec compile_path ctx (name, flds) =
 	if !verbose then Printf.printf "#compile_path %s\n" (show_path (name, flds));
@@ -425,11 +568,11 @@ and compile_lvalue ctx = function
 				let lv_res = Leoc.PArith(Add, lv, Leoc.Arith(Mul, idx_rv, Leoc.Val elt_size)) in
 				ctx2, code1 @ code2, aty, [C.LV lv_res]
 
-and compile_stmt ctx = function
-	| Def(name, [], If(con, e1, e2o)) ->
+and compile_stmt ctx (stmt, loc) = match stmt with
+	| Def(name, [], (If(con, e1, e2o), sl)) ->
 			let _, _, ty, _ = compile_expr ctx e1 in
 			let ctx1 = addvar ctx name ty in
-			let ctx2, compres = compile_stmt ctx1 (Write(Var (name, []), If(con, e1, e2o))) in
+			let ctx2, compres = compile_stmt ctx1 (Write(Var (name, []), (If(con, e1, e2o),sl)), loc) in
 			ctx2, Code ([C.DefVar name] @ get_code compres)
 	| Def(name, [], exp) ->
 			let ctx1, code1, ty, rc = compile_expr ctx exp in
@@ -445,12 +588,13 @@ and compile_stmt ctx = function
 	| Def(name, arglist, exp) ->
 			addfundef name arglist (returnize exp);
 			ctx, Func name
-	| Write(lv, If(con, e1, e2o)) ->
-			let e2o' = Option.map (fun e -> Comp[Write(lv, e)]) e2o in
-			compile_stmt ctx (Expr(If(con, Comp[Write(lv, e1)], e2o' )))
+	| Write(lv, (If(con, e1, e2o),sl)) ->
+			let e2o' = Option.map (fun e -> Comp[Write(lv, e), snd e], snd e) e2o in
+			compile_stmt ctx (Expr(If(con, (Comp[Write(lv, e1), snd e1], snd e1), e2o' ),sl),loc)
 	| Write(lv, e) as orgst ->
 			let ctx1, code1, lty, lrc = compile_lvalue ctx lv in
 			let ctx2, code2, ty, rc = compile_expr ctx1 e in
+			let sl = snd e in
 			let code3 = match lty, ty, lrc, rc with
 				| TInt, TInt, [C.LV lv], [rv] -> [Leoc.Assign(ASInt, lv, rv)]
 				| TInt, TInt32, [C.LV lv], [rv] -> [Leoc.Assign(ASInt32, lv, rv)]
@@ -465,25 +609,26 @@ and compile_stmt ctx = function
 				| TArray _, TRange _, _, _ ->
 						let k = uid () in
 						let ivar = Printf.sprintf "i_%d" k and jvar = Printf.sprintf "j_%d" k in
-						let st = For([ivar, LV lv; jvar, e], [
-								Write(Var(mkpath ivar []), LV(Var(mkpath jvar [])))
+						let st = For([ivar, (LV lv, sl); jvar, e], [
+								Write(Var(mkpath ivar []), (LV(Var(mkpath jvar [])), sl)), sl
 								]) in
-						(match compile_stmt ctx st with _, Code code' -> code' | _, _ -> failwith "bad result of array copy compilation")
+						(match compile_stmt ctx (st,sl) with _, Code code' -> code' | _, _ -> failwith "bad result of array copy compilation")
 				| TArray _, TInt,  _, _ 
 				| TArray _, TInt32,  _, _ 
 				| TArray _, TByte, _, _ -> 
 						let k = uid () in
 						let ivar = Printf.sprintf "i_%d" k  in
-						let st = For([ivar, LV lv], [
-								Write(Var(mkpath ivar []), e)
+						let st = For([ivar, (LV lv, sl)], [
+								Write(Var(mkpath ivar []), e), sl
 								]) in
-						(match compile_stmt ctx st with _, Code code' -> code' | _, _ -> failwith "bad result of array copy compilation")
+						(match compile_stmt ctx (st,sl) with _, Code code' -> code' | _, _ -> failwith "bad result of array copy compilation")
 				| _, _, _, _ -> failwith (Printf.sprintf "wrong types in assignment %s: %s and %s"
 									(show_stmt 0 orgst) (show_type lty) (show_type ty)) in
 			ctx, Code(code1 @ code2 @ code3)
 	| Print es ->
 			let print_code e = 
 				let _, code, ty, rc = compile_expr ctx e in
+				let sl = snd e in
 				let prcode = 
 					match ty, rc with
 					| TInt, [rv] -> [Leoc.Print rv]
@@ -493,9 +638,9 @@ and compile_stmt ctx = function
 							let k = uid () in
 							let ivar = Printf.sprintf "i_%d" k  in
 							let st = For([ivar, e], [
-									Print([LV(Var(mkpath ivar []))])
+									Print([LV(Var(mkpath ivar [])), sl]),sl
 								]) in
-							(match compile_stmt ctx st with 
+							(match compile_stmt ctx (st,sl) with 
 								| _, Code cd -> Leoc.subst_code_by_stmt (function Leoc.Print x -> Some(Leoc.Prchar x) | _ -> None) cd									 
 								| _ -> failwith "bad result of print compile")						 
 					| _, _ -> failwith (Printf.sprintf "bad argument type for print(%s): %s" (show_expr 0 e) (show_type ty)) in
@@ -556,7 +701,8 @@ and compile_stmt ctx = function
 			| TInt, TInt, [rv1], [rv2] -> ctx, Code[Leoc.PostMessage(msg, rv1, rv2)]
 			| _, _, _, _ -> failwith "not ints in PostMessage" 
 
-and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.code * val_type * Leoc.rvalue list) = fun ctx -> function
+and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.code * val_type * Leoc.rvalue list) = 
+	fun ctx (rexp,loc) -> match rexp with
 			| Val i -> ctx, [], TInt, [Leoc.Val i]
 			| LV lv -> compile_lvalue ctx lv
 			| Arith(op, e1, e2) ->
@@ -654,8 +800,8 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 					let ty, mkasgn = TArray(vtype_of_atype arrtype, alen), (fun l r -> Leoc.Assign(arrtype, l, r)) in
 					let ctx2 = addvar ctx arr_var ty in
 					let ass_code = es |> List.mapi (fun idx e ->
-										let stmt = Write(ArrElt((arr_var, []), Val idx), e) in
-										let _, res = compile_stmt ctx2 stmt in
+										let stmt = Write(ArrElt((arr_var, []), (Val idx, loc)), e) in
+										let _, res = compile_stmt ctx2 (stmt,loc) in
 										get_code res) |> mix |> List.concat in
 					ctx, alloc_code @ ass_code, ty, [C.LV(C.Var arr_var); C.Val len]
 			| If(con, e1, e2o) ->
@@ -682,13 +828,13 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 			| Lambda(name_list, e) -> failwith "not expanded lambda expression"
 			| Comp code ->
 					(match List.rev code with
-						| Expr e :: rest_code ->
+						| (Expr e,sl) :: rest_code ->
 								let ctx1, code01 = List.fold_left (fun (cx, cd) stmt ->
 													let cx1, st1 = compile_stmt cx stmt in cx1, st1:: cd) (ctx, []) (List.rev rest_code) in
 								let ctx2, code2, ty, rc = compile_expr ctx1 e in
 								let ccode = code01 |> List.rev |> List.map get_code |> List.concat in
 								ctx2, ccode @ code2, ty, rc
-						| Ret e :: rest_code ->
+						| (Ret e,sl) :: rest_code ->
 								let ctx1, _ = compile_code ctx (List.rev rest_code) in
 								let _, _, ty, _ = compile_expr ctx1 e in
 								let ctx2, ccode = compile_code ctx code in

@@ -18,7 +18,7 @@ let process prg bc_handler quiet trash =
 	let maybe = if !verbose then (fun f x -> f x) else (fun f x -> ()) in 
 	prg |> maybe(Leo.show_code 0 >> print_endline);
 	maybe print_endline "\nexpanded Leo:\n";
-	let eprg = prg |> Leo.expand_code M.empty |> snd in
+	let eprg = prg |> Leo.expand_code M.empty in
 	eprg |> maybe(Leo.show_code 0 >> print_endline);
 	maybe print_endline "\nLeoC:\n";
 	let _, ccode = Leo.compile_code Leo.empty_context eprg in
@@ -36,7 +36,9 @@ let process prg bc_handler quiet trash =
 let end_tokens = [Tokens.Leol; Tokens.Leof; Tokens.Lrem]
 
 let main () =
-	if Array.length Sys.argv < 2 then (Fib.test(); Printf.printf "Usage: leoc <program.leo> [-v] [-q] [-tr] [-bc bytecode_file]") else
+	if Array.length Sys.argv < 2 then ((*Fib.test();*) 
+		Printf.printf "Usage: leoc <program.leo> [-v] [-q] [-tr] [-bc bytecode_file] [-64] [-fc] [-bcdump]") 
+	else
 	begin 
 		verbose := Array.mem "-v" Sys.argv;
 		let quiet = Array.mem "-q" Sys.argv in
@@ -70,11 +72,12 @@ let main () =
 			let rec loop res =
 				let token = Leolex.lexer lbuf in
 				let res' = token::res in
-				if token = Tokens.Leof then List.rev res' else loop res' in
+				if fst token = Tokens.Leof then List.rev res' else loop res' in
 			loop [] in			
 		let bc_handler2 = if fib_comp then Fib.compress >> bc_handler else bc_handler in 
+		(*List.iter (fun (t,p) -> Printf.printf "%s(%d) " (Tokens.show_tok t) p) tokens;*)
     match Parse.parse_program tokens (not x64) with
-		| Parsercomb.Parsed(ast, unparsed) when 
+		| Parsercomb.Parsed((ast,_), unparsed) when 
 				List.for_all (Parse.get0 >> flip List.mem end_tokens) unparsed 	
 			->  process ast bc_handler2 quiet trash
 		| Parsercomb.Parsed(ast, unparsed) -> 

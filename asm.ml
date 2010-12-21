@@ -172,7 +172,7 @@ let cmd_size_micro = function
 let cmd_to_lvm2 = function
 	| Arith(Add, RegDest dr, Reg r1, Val 1) when dr = r1 -> Printf.sprintf "INC, %d, 0, 0,\n" dr  
 	| Arith(Add, RegDest dr, Reg r1, Val 4) when dr = r1 -> Printf.sprintf "INC4, %d, 0, 0,\n" dr   
-	| Arith(Add, RegDest dr, Reg r1, Val 8) when dr = r1 -> Printf.sprintf "INC8, %d, 0, 0,\n" dr   
+	| Arith(Add, RegDest dr, Reg r1, Val 8) when dr = r1 && not !int32_is_int -> Printf.sprintf "INC8, %d, 0, 0,\n" dr   
 	| Arith(Add, RegDest dr, Reg r1, Val v2) -> Printf.sprintf "ADD_RRV, %d, %d, %d,\n" dr r1 v2  
 	| Arith(Add, RegDest dr, Reg r1, Reg r2) -> Printf.sprintf "ADD_RRR, %d, %d, %d,\n" dr r1 r2  
 	| Arith(op, d, a1, a2) -> Printf.sprintf "%s|%c%c%c, %d, %d, %d,\n" (oper_s op) (dst_pr d) (src_pr a1) (src_pr a2) (dst_n d) (src_n a1) (src_n a2)  

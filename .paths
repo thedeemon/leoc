@@ -9,3 +9,6 @@ tests
 .hg/store
 .hg/store/data
 tests
+.hg/store
+.hg/store/data
+tests
