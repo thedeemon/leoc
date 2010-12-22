@@ -16,6 +16,6 @@ let log s = () (*if !verbose then (prerr_string (s^" "); flush stderr)*)
 type source_loc = int (* line number *)
 let no_source : source_loc = -1
 let int32_is_int = ref false
-
+let prog_lines = ref [|""|]
 
 module M = Map.Make(String);;

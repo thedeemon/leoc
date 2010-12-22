@@ -14,7 +14,7 @@ let write_le f i =
         output_byte f ((i lsr 16) land 0xff);
         output_byte f (let t = ((i lsr 24) land 0xff) in if i >= 0 then t else t lor 0x80)
 
-let process prg bc_handler quiet trash =
+let process prg bc_handler quiet trash prog_lines =
 	let maybe = if !verbose then (fun f x -> f x) else (fun f x -> ()) in 
 	prg |> maybe(Leo.show_code 0 >> print_endline);
 	maybe print_endline "\nexpanded Leo:\n";
@@ -67,6 +67,7 @@ let main () =
 					listout bytecode;	
 					Printf.printf "]\n") else (fun bytecode -> ()) in
   	let prog_text = Std.input_file Sys.argv.(1) in
+		prog_lines := String.nsplit prog_text "\n" |> Array.of_list;
 		let tokens =
 			let lbuf = Lexing.from_string prog_text in
 			let rec loop res =
@@ -79,7 +80,7 @@ let main () =
     match Parse.parse_program tokens (not x64) with
 		| Parsercomb.Parsed((ast,_), unparsed) when 
 				List.for_all (Parse.get0 >> flip List.mem end_tokens) unparsed 	
-			->  process ast bc_handler2 quiet trash
+			->  process ast bc_handler2 quiet trash prog_lines
 		| Parsercomb.Parsed(ast, unparsed) -> 
 				List.take 30 unparsed |> List.map (Parse.get0 >> Tokens.show_tok) |> String.concat " " 
 				|>	Printf.printf "Parsing problem near: %s\n" 

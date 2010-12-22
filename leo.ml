@@ -160,41 +160,15 @@ and show_ftype = function
 and show_num = function NVal i -> string_of_int i | NVar nm -> nm;;
 (*********************** recursion check ***********************************)
 
-let rec is_recursive funname (exp,sl) = match exp with
-	| Val i -> false
-	| LV lv -> lvalue_uses_fun funname lv
-	| Arith(op, e1, e2) -> (is_recursive funname e1) || (is_recursive funname e2)
-	| Call(name, elist) -> funname = name || (List.exists (is_recursive funname) elist)
-	| Range(e1, e2) -> (is_recursive funname e1) || (is_recursive funname e2)
-	| Length e | Head e | Tail e -> is_recursive funname e
-	| New(arrtype, es) -> List.exists (is_recursive funname) es
-	| If(con, e1, e2o) -> (cond_uses_fun funname con) || (is_recursive funname e1) || (Option.map_default (is_recursive funname) false e2o)
-	| Lambda(name_list, e) ->
-			(if List.mem funname name_list then failwith ("one name for function and lambda arg: "^funname);
-				is_recursive funname e)
-	| Comp code -> List.exists (stmt_uses_fun funname) code
-
-and cond_uses_fun funname = function
-	| Less(e1, e2)
-	| Eq(e1, e2) -> (is_recursive funname e1) || (is_recursive funname e2)
-	| And(con1, con2)
-	| Or(con1, con2) -> (cond_uses_fun funname con1) || (cond_uses_fun funname con2)
-	| Not con -> cond_uses_fun funname con
-
-and stmt_uses_fun funname (stmt,sl) = match stmt with
-	| Def(name, arglist, exp) ->
-			(if List.mem funname (name:: arglist) then failwith ("function name already used: "^funname);
-				is_recursive funname exp)
-	| Write(_, e) | Ret e	| Expr e -> is_recursive funname e
-	| Print es -> List.exists (is_recursive funname) es
-	| For(name_seq_list, code) -> (List.exists (snd >> is_recursive funname) name_seq_list) || (List.exists (stmt_uses_fun funname) code)
-	| Typedef _ | Typing _ | Trash _ -> false
-	| While(con, code) -> cond_uses_fun funname con || (List.exists (stmt_uses_fun funname) code)
-	| PostMessage(msg, e1, e2) -> (is_recursive funname e1) || (is_recursive funname e2)
-
-and lvalue_uses_fun funname = function
-	| Var (name, _) -> name = funname
-	| ArrElt(_, e) -> is_recursive funname e
+exception Yes
+let is_recursive funname exp = 
+	let o = object(self)
+		inherit mapper as super
+		method map_raw_expr e = match e with
+			| Call(name, elist) when funname = name -> raise Yes 
+			| _ -> super#map_raw_expr e
+	end in
+	try ignore(o#map_expr exp); false with Yes -> true 
 
 (*********************** expand ************************************)
 

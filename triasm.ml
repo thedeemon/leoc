@@ -5,7 +5,8 @@ type dst = Asm.dst
 type src = Asm.src
 type name = string
 type code = statement list
-and statement = 
+and statement = raw_statement * source_loc
+and raw_statement = 
 	| Arith of oper * dst * src * src
 	| Mov of arg_size * dst * src
 	| Print of src
@@ -29,42 +30,42 @@ and condition =
 
 let da x = DynArray.of_list [x];;
 
-let rec compile_stmt ctx = function
-	| Arith(op, d, a1, a2) -> da (Asm.Arith(op, d, a1, a2))
-	| Mov(sz, d, a1) -> da (Asm.Mov(sz, d, a1))
-	| Print a1 -> da (Asm.Print a1)
-	| Prchar a1 -> da (Asm.Prchar a1)
-	| New(d, a1) -> da (Asm.New(d, a1))
-	| Call(lab, a1) -> da (Asm.Call(lab, Asm.Val a1))
+let rec compile_stmt ctx (stmt,sl) = match stmt with
+	| Arith(op, d, a1, a2) -> da (Asm.Arith(op, d, a1, a2),sl)
+	| Mov(sz, d, a1) -> da (Asm.Mov(sz, d, a1),sl)
+	| Print a1 -> da (Asm.Print a1, sl)
+	| Prchar a1 -> da (Asm.Prchar a1, sl)
+	| New(d, a1) -> da (Asm.New(d, a1), sl)
+	| Call(lab, a1) -> da (Asm.Call(lab, Asm.Val a1), sl)
 	| Defun(name, code) -> 
 			let end_lab = Printf.sprintf "endproc_%d" (uid ()) in
-			let asm = da (Asm.Jmp end_lab) in
-			DynArray.add asm (Asm.Label name);
+			let asm = da (Asm.Jmp end_lab, sl) in
+			DynArray.add asm (Asm.Label name, sl);
 			DynArray.append (compile [] code) asm;
-			DynArray.add asm Asm.Ret;
-			DynArray.add asm (Asm.Label end_lab);
+			DynArray.add asm (Asm.Ret, sl);
+			DynArray.add asm (Asm.Label end_lab, sl);
 			asm
-	| If(cond, then_code, else_code) ->	compile_if ctx cond (compile ctx then_code) (compile ctx else_code)
+	| If(cond, then_code, else_code) ->	compile_if ctx cond (compile ctx then_code) (compile ctx else_code) sl
 	| While(cond, code) ->
 			let k = uid () in
 			let while_lab = Printf.sprintf "while_cond_%d" k and body_lab = Printf.sprintf "while_body_%d" k 
 			and end_lab = Printf.sprintf "endloop_%d" k in
-			let asm = da (Asm.Jmp while_lab) in
-			DynArray.add asm (Asm.Label body_lab);
+			let asm = da (Asm.Jmp while_lab, sl) in
+			DynArray.add asm (Asm.Label body_lab, sl);
 			DynArray.append (compile (end_lab::ctx) code) asm;
-			DynArray.add asm (Asm.Label while_lab);
-			DynArray.append (compile_if ctx cond (da (Asm.Jmp body_lab)) (DynArray.make 0)) asm;
-			DynArray.add asm (Asm.Label end_lab);
+			DynArray.add asm (Asm.Label while_lab, sl);
+			DynArray.append (compile_if ctx cond (da (Asm.Jmp body_lab, sl)) (DynArray.make 0) sl) asm;
+			DynArray.add asm (Asm.Label end_lab, sl);
 			asm	  
-	| Ret -> da Asm.Ret 
-	| Break -> (match ctx with end_lab::rest -> da(Asm.Jmp end_lab) | [] -> failwith "break from not a loop")
-	| Goto name -> da (Asm.Jmp name)
-	| PostMessage(msg, a1, a2) -> da (Asm.PostMessage(msg, a1, a2))
+	| Ret -> da (Asm.Ret, sl) 
+	| Break -> (match ctx with end_lab::rest -> da(Asm.Jmp end_lab, sl) | [] -> failwith "break from not a loop")
+	| Goto name -> da (Asm.Jmp name, sl)
+	| PostMessage(msg, a1, a2) -> da (Asm.PostMessage(msg, a1, a2), sl)
 
 and compile ctx prg = 
 	prg |> List.enum |> Enum.map (compile_stmt ctx >> DynArray.enum) |> Enum.concat |> DynArray.of_enum 
 	
-and compile_if ctx cond then_ else_ =
+and compile_if ctx cond then_ else_ sl =
 	let comp_condjmp c1 c2 jmp_cmd =
 	  let id = uid () in
 		let then_lab = Printf.sprintf "then_%d" id and end_lab = Printf.sprintf "endif_%d" id in
@@ -72,28 +73,28 @@ and compile_if ctx cond then_ else_ =
 		DynArray.append (compile ctx c2) asm;
 		DynArray.add asm (jmp_cmd then_lab); 
 		DynArray.append else_ asm;
-		DynArray.add asm (Asm.Jmp end_lab);
-		DynArray.add asm (Asm.Label then_lab);
+		DynArray.add asm (Asm.Jmp end_lab, sl);
+		DynArray.add asm (Asm.Label then_lab, sl);
 		DynArray.append then_ asm;
-		DynArray.add asm (Asm.Label end_lab);
+		DynArray.add asm (Asm.Label end_lab, sl);
 		asm in
 	match cond with
-	| Less(c1, a1, c2, a2) -> comp_condjmp c1 c2 (fun then_lab -> Asm.Jmple(then_lab, a1, a2))
-	| Eq(c1, a1, c2, a2)   -> comp_condjmp c1 c2 (fun then_lab -> Asm.Jmpeq(then_lab, a1, a2))
-	| Not con -> compile_if ctx con else_ then_
+	| Less(c1, a1, c2, a2) -> comp_condjmp c1 c2 (fun then_lab -> Asm.Jmple(then_lab, a1, a2), sl)
+	| Eq(c1, a1, c2, a2)   -> comp_condjmp c1 c2 (fun then_lab -> Asm.Jmpeq(then_lab, a1, a2), sl)
+	| Not con -> compile_if ctx con else_ then_ sl
 	| And(con1, con2) -> 
 			let else_lab = Printf.sprintf "else_%d" (uid ()) in
-			let else2 = da (Asm.Label else_lab) in
+			let else2 = da (Asm.Label else_lab, sl) in
 			DynArray.append else_ else2;  
-			let code2 = compile_if ctx con2 then_ else2 in
-			compile_if ctx con1 code2 (da (Asm.Jmp else_lab))
+			let code2 = compile_if ctx con2 then_ else2 sl in
+			compile_if ctx con1 code2 (da (Asm.Jmp else_lab, sl)) sl
 	| Or(con1, con2) -> 
 			let then_lab = Printf.sprintf "then_%d" (uid ()) in
-			let then1 = da (Asm.Label then_lab) in
+			let then1 = da (Asm.Label then_lab, sl) in
 			DynArray.append then_ then1;
-			let then2 = da (Asm.Jmp then_lab) in
-			let else1 = compile_if ctx con2 then2 else_ in
-			compile_if ctx con1 then1 else1;;
+			let then2 = da (Asm.Jmp then_lab, sl) in
+			let else1 = compile_if ctx con2 then2 else_ sl in
+			compile_if ctx con1 then1 else1 sl;;
 
 let process quiet prg = prg |> compile [] |> Asm.process quiet;;
 

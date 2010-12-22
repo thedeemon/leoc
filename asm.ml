@@ -22,7 +22,8 @@ open Commons;;
 type dst = RegDest of int | PntDest of int
 type src = Reg of int | Pnt of int | Val of int
 
-type 'loc command = 
+type 'loc command = 'loc raw_command * source_loc
+and 'loc raw_command = 
 	| Arith of oper * dst * src * src
 	| Mov of arg_size * dst * src
 	| Jmple of 'loc * src * src
@@ -64,7 +65,7 @@ let cmd_to_text = function
 	| Label addr -> Printf.sprintf "//%d - %s:\n" (fst addr) (snd addr)
 	| PostMessage(msg, a1, a2) -> Printf.sprintf "POSTMSG|R%c%c, %d, %d, %d,\n" (src_pr a1) (src_pr a2) msg (src_n a1) (src_n a2) 
 	
-let cmd_size = function 
+let cmd_size (cmd,sl) = match cmd with 
 	(*String.enum (to_s cmd) |> Enum.filter_map (function ',' -> Some 1 | _ -> None) |> Enum.count*) 
 	| Arith _ | Jmple _ | Jmpeq _ | PostMessage _ -> 4
 	| Mov _ | New _ | Print _ | Prchar _ | Call _ -> 3
@@ -76,10 +77,10 @@ let resolve_labels sizer prg =
 	let labels = DynArray.fold_left (fun (m, len) cmd ->
 		let len' = len + sizer cmd in 
 		match cmd with
-		| Label str -> M.add str len m, len'
+		| Label str, _ -> M.add str len m, len'
 		| _ -> m, len') (M.empty, 0) prg |> fst in
-  let find lab = try M.find lab labels, lab with Not_found -> (Printf.printf "Error: label '%s' not found.\n" lab; 0, lab) in 
-	DynArray.map (function
+  let find lab = try M.find lab labels, lab with Not_found -> (Printf.printf "Error: label '%s' not found.\n" lab; 0, lab) in
+	let cmd_map = function
 		| Jmple(lab, a1, a2) -> Jmple(find lab, a1, a2)
 		| Jmpeq(lab, a1, a2) -> Jmpeq(find lab, a1, a2)
 		| Jmp lab -> Jmp (find lab)
@@ -91,10 +92,11 @@ let resolve_labels sizer prg =
 		| Print x -> Print x 
 		| Prchar x -> Prchar x 
 		| Ret -> Ret
-		| PostMessage(msg, a1, a2) -> PostMessage(msg, a1, a2)) prg
+		| PostMessage(msg, a1, a2) -> PostMessage(msg, a1, a2) in	
+	DynArray.map (fun (cmd,sl) -> cmd_map cmd, sl) prg
 		  
 let label_indices prg = 
-	DynArray.enum prg |> Enum.foldi (fun i cmd m -> match cmd with Label str -> M.add str i m | _ -> m) M.empty;;
+	DynArray.enum prg |> Enum.foldi (fun i cmd m -> match cmd with Label str, _ -> M.add str i m | _ -> m) M.empty;;
 
 let remove_dead_code prg =
 	let labels = label_indices prg in
@@ -105,13 +107,13 @@ let remove_dead_code prg =
 		if ip >= DynArray.length prg || live.(ip) then () else
 			(live.(ip) <- true;
 			match DynArray.get prg ip with
-			| Jmp lab ->
+			| Jmp lab, _ ->
 					let target = M.find lab labels in
 					(*if !verbose then Printf.printf "# code[%d]: jmp %d\n" ip target;*)
 					if target = ip + 1 then (live.(ip) <- false; go (ip+1)) else Queue.add target threads
-			| Ret -> ()
-			| Jmple(lab, _, _) | Call(lab, _) 	
-			| Jmpeq(lab, _, _) -> Queue.add (M.find lab labels) threads; go (ip+1)
+			| Ret,_ -> ()
+			| Jmple(lab, _, _),_ | Call(lab, _),_ 	
+			| Jmpeq(lab, _, _),_ -> Queue.add (M.find lab labels) threads; go (ip+1)
 			| _ -> go (ip+1)) in				
 	while not (Queue.is_empty threads) do
 		go (Queue.take threads)
@@ -127,14 +129,14 @@ let optimize_jumps prg =
 		let rec loop i curlab =
 			if i >= DynArray.length prg then curlab else
 			match DynArray.get prg i with
-			| Jmp l -> label_target l
-			| Label _ -> loop (i+1) curlab
+			| Jmp l,_ -> label_target l
+			| Label _, _ -> loop (i+1) curlab
 			| _ -> curlab  in
 		loop (start+1) lab  in
 	prg |> DynArray.map (function
-		| Jmple(lab, a1, a2) -> Jmple(label_target lab, a1, a2)
-		| Jmpeq(lab, a1, a2) -> Jmpeq(label_target lab, a1, a2)
-		| Jmp lab -> Jmp (label_target lab)
+		| Jmple(lab, a1, a2),sl -> Jmple(label_target lab, a1, a2),sl
+		| Jmpeq(lab, a1, a2),sl -> Jmpeq(label_target lab, a1, a2),sl
+		| Jmp lab,sl -> Jmp (label_target lab),sl
 		| x -> x) 
 	|> remove_dead_code |> remove_dead_code;;  
 		
@@ -169,7 +171,14 @@ let cmd_size_micro = function
 	| Call _ -> 4
 	| Jmp _ -> 2	| Ret -> 1	| Label _ | PostMessage _ -> 0;;
 		
-let cmd_to_lvm2 = function
+let last_line = ref 0
+		
+let cmd_to_lvm2 (cmd, sl) = 
+	let ls = if sl = !last_line then "" else begin
+		last_line := sl;
+		Printf.sprintf "/// %s\n" !prog_lines.(sl-1)
+	end in
+	let cs = match cmd with
 	| Arith(Add, RegDest dr, Reg r1, Val 1) when dr = r1 -> Printf.sprintf "INC, %d, 0, 0,\n" dr  
 	| Arith(Add, RegDest dr, Reg r1, Val 4) when dr = r1 -> Printf.sprintf "INC4, %d, 0, 0,\n" dr   
 	| Arith(Add, RegDest dr, Reg r1, Val 8) when dr = r1 && not !int32_is_int -> Printf.sprintf "INC8, %d, 0, 0,\n" dr   
@@ -189,7 +198,8 @@ let cmd_to_lvm2 = function
 	| Call(addr, a1) -> Printf.sprintf "CALL|R%cR, %d, %d, //%s\n" (src_pr a1) (fst addr) (src_n a1) (snd addr)
 	| Ret -> "RET,\n"
 	| Label addr -> Printf.sprintf "//%d - %s:\n" (fst addr) (snd addr)
-	| PostMessage(msg, a1, a2) -> Printf.sprintf "POSTMSG|R%c%c, %d, %d, %d,\n" (src_pr a1) (src_pr a2) msg (src_n a1) (src_n a2)		
+	| PostMessage(msg, a1, a2) -> Printf.sprintf "POSTMSG|R%c%c, %d, %d, %d,\n" (src_pr a1) (src_pr a2) msg (src_n a1) (src_n a2)
+	in ls ^ cs		
 	
 let cmd n = n (* n << CMDSHIFT, CMDSHIFT = 0 now *)
 let modshift = 8
@@ -228,7 +238,7 @@ let modi d a1 a2 =
 let mov_op = function
 	| ASByte -> op_movb | ASInt32 -> op_movd | ASInt -> op_mov		
 		
-let cmd_to_bc = function		
+let cmd_to_bc (cmd,sl) = match cmd with		
 	| Arith(Add, RegDest dr, Reg r1, Val 1) when dr = r1 -> [op_inc; dr; 0; 0]  
 	| Arith(Add, RegDest dr, Reg r1, Val 4) when dr = r1 -> [op_inc4; dr; 0; 0]   
 	| Arith(Add, RegDest dr, Reg r1, Val 8) when dr = r1 -> [op_inc8; dr; 0; 0]   
@@ -255,8 +265,8 @@ let process quiet prg =
 	if not quiet then	DynArray.iter (cmd_to_lvm2 >> print_string) cmds;
 	DynArray.to_list cmds |> List.map cmd_to_bc |> List.concat;;
 				
-let process_micro prg = prg |> optimize_jumps |> resolve_labels cmd_size_micro 
-  |> DynArray.iter (cmd_to_micro >> print_string);;
+(*let process_micro prg = prg |> optimize_jumps |> resolve_labels cmd_size_micro 
+  |> DynArray.iter (cmd_to_micro >> print_string);;*)
 
 (*let prg_fib = [
 	Mov(RegDest 0, Val 1);
