@@ -48,7 +48,7 @@ let rec show_code n code =
 and show_stmt n (stmt, sl) = 
 	let lstmt = if sl = !last_line then "" else begin
 		last_line := sl;
-		Printf.sprintf "//%s\n%s" !prog_lines.(sl-1) (String.make n ' ')		
+		Printf.sprintf "//%s\n%s" (prog_source sl) (String.make n ' ')		
 	end in
 	let cstmt = match stmt with
   | DefVar name -> Printf.sprintf "var %s" name

@@ -18,4 +18,8 @@ let no_source : source_loc = -1
 let int32_is_int = ref false
 let prog_lines = ref [|""|]
 
+let prog_source sl = 
+	try !prog_lines.(sl-1) with Invalid_argument _ -> "no source"
+	
+
 module M = Map.Make(String);;

@@ -176,29 +176,29 @@ let last_line = ref 0
 let cmd_to_lvm2 (cmd, sl) = 
 	let ls = if sl = !last_line then "" else begin
 		last_line := sl;
-		Printf.sprintf "/// %s\n" !prog_lines.(sl-1)
+		Printf.sprintf "/// %s\n" (prog_source sl)
 	end in
 	let cs = match cmd with
-	| Arith(Add, RegDest dr, Reg r1, Val 1) when dr = r1 -> Printf.sprintf "INC, %d, 0, 0,\n" dr  
-	| Arith(Add, RegDest dr, Reg r1, Val 4) when dr = r1 -> Printf.sprintf "INC4, %d, 0, 0,\n" dr   
-	| Arith(Add, RegDest dr, Reg r1, Val 8) when dr = r1 && not !int32_is_int -> Printf.sprintf "INC8, %d, 0, 0,\n" dr   
-	| Arith(Add, RegDest dr, Reg r1, Val v2) -> Printf.sprintf "ADD_RRV, %d, %d, %d,\n" dr r1 v2  
-	| Arith(Add, RegDest dr, Reg r1, Reg r2) -> Printf.sprintf "ADD_RRR, %d, %d, %d,\n" dr r1 r2  
-	| Arith(op, d, a1, a2) -> Printf.sprintf "%s|%c%c%c, %d, %d, %d,\n" (oper_s op) (dst_pr d) (src_pr a1) (src_pr a2) (dst_n d) (src_n a1) (src_n a2)  
-	| Mov(ASInt, RegDest dr, Reg r1) -> Printf.sprintf "MOV_RR, %d, %d,\n" dr r1
-	| Mov(ASInt, RegDest dr, Val v1) -> Printf.sprintf "MOV_RV, %d, %d,\n" dr v1
-	| Mov(sz, d, a1) -> Printf.sprintf "MOV%s|%c%cR, %d, %d,\n" (arg_size_suff sz) (dst_pr d) (src_pr a1) (dst_n d) (src_n a1)
-	| Jmple(addr, Reg r1, Reg r2) -> Printf.sprintf "JMPLE_RR, %d, %d, %d, //%s\n"  (fst addr) r1 r2 (snd addr)
-	| Jmple(addr, a1, a2) -> Printf.sprintf "JMPLE|R%c%c, %d, %d, %d, //%s\n" (src_pr a1) (src_pr a2) (fst addr) (src_n a1) (src_n a2) (snd addr)
-	| Jmpeq(addr, a1, a2) -> Printf.sprintf "JMPEQ|R%c%c, %d, %d, %d, //%s\n" (src_pr a1) (src_pr a2) (fst addr) (src_n a1) (src_n a2) (snd addr)
-	| Jmp addr -> Printf.sprintf "JMP, %d, //%s\n" (fst addr)  (snd addr)
-	| Print a1 -> Printf.sprintf "PRINT|R%cR, 0, %d,\n" (src_pr a1) (src_n a1)
-	| Prchar a1 -> Printf.sprintf "PRCHAR|R%cR, 0, %d,\n" (src_pr a1) (src_n a1)
-	| New(d, a1) -> Printf.sprintf "NEW|%c%cR, %d, %d,\n" (dst_pr d) (src_pr a1) (dst_n d) (src_n a1)
-	| Call(addr, a1) -> Printf.sprintf "CALL|R%cR, %d, %d, //%s\n" (src_pr a1) (fst addr) (src_n a1) (snd addr)
-	| Ret -> "RET,\n"
-	| Label addr -> Printf.sprintf "//%d - %s:\n" (fst addr) (snd addr)
-	| PostMessage(msg, a1, a2) -> Printf.sprintf "POSTMSG|R%c%c, %d, %d, %d,\n" (src_pr a1) (src_pr a2) msg (src_n a1) (src_n a2)
+	| Arith(Add, RegDest dr, Reg r1, Val 1) when dr = r1 -> Printf.sprintf "INC, %d, 0, 0," dr  
+	| Arith(Add, RegDest dr, Reg r1, Val 4) when dr = r1 -> Printf.sprintf "INC4, %d, 0, 0," dr   
+	| Arith(Add, RegDest dr, Reg r1, Val 8) when dr = r1 && not !int32_is_int -> Printf.sprintf "INC8, %d, 0, 0," dr   
+	| Arith(Add, RegDest dr, Reg r1, Val v2) -> Printf.sprintf "ADD_RRV, %d, %d, %d," dr r1 v2  
+	| Arith(Add, RegDest dr, Reg r1, Reg r2) -> Printf.sprintf "ADD_RRR, %d, %d, %d," dr r1 r2  
+	| Arith(op, d, a1, a2) -> Printf.sprintf "%s|%c%c%c, %d, %d, %d," (oper_s op) (dst_pr d) (src_pr a1) (src_pr a2) (dst_n d) (src_n a1) (src_n a2)  
+	| Mov(ASInt, RegDest dr, Reg r1) -> Printf.sprintf "MOV_RR, %d, %d," dr r1
+	| Mov(ASInt, RegDest dr, Val v1) -> Printf.sprintf "MOV_RV, %d, %d," dr v1
+	| Mov(sz, d, a1) -> Printf.sprintf "MOV%s|%c%cR, %d, %d," (arg_size_suff sz) (dst_pr d) (src_pr a1) (dst_n d) (src_n a1)
+	| Jmple(addr, Reg r1, Reg r2) -> Printf.sprintf "JMPLE_RR, %d, %d, %d, //%s"  (fst addr) r1 r2 (snd addr)
+	| Jmple(addr, a1, a2) -> Printf.sprintf "JMPLE|R%c%c, %d, %d, %d, //%s" (src_pr a1) (src_pr a2) (fst addr) (src_n a1) (src_n a2) (snd addr)
+	| Jmpeq(addr, a1, a2) -> Printf.sprintf "JMPEQ|R%c%c, %d, %d, %d, //%s" (src_pr a1) (src_pr a2) (fst addr) (src_n a1) (src_n a2) (snd addr)
+	| Jmp addr -> Printf.sprintf "JMP, %d, //%s" (fst addr)  (snd addr)
+	| Print a1 -> Printf.sprintf "PRINT|R%cR, 0, %d," (src_pr a1) (src_n a1)
+	| Prchar a1 -> Printf.sprintf "PRCHAR|R%cR, 0, %d," (src_pr a1) (src_n a1)
+	| New(d, a1) -> Printf.sprintf "NEW|%c%cR, %d, %d," (dst_pr d) (src_pr a1) (dst_n d) (src_n a1)
+	| Call(addr, a1) -> Printf.sprintf "CALL|R%cR, %d, %d, //%s" (src_pr a1) (fst addr) (src_n a1) (snd addr)
+	| Ret -> "RET,"
+	| Label addr -> Printf.sprintf "//%d - %s:" (fst addr) (snd addr)
+	| PostMessage(msg, a1, a2) -> Printf.sprintf "POSTMSG|R%c%c, %d, %d, %d," (src_pr a1) (src_pr a2) msg (src_n a1) (src_n a2)
 	in ls ^ cs		
 	
 let cmd n = n (* n << CMDSHIFT, CMDSHIFT = 0 now *)
@@ -262,7 +262,9 @@ let cmd_to_bc (cmd,sl) = match cmd with
 				
 let process quiet prg =
 	let cmds = prg |> optimize_jumps |> resolve_labels cmd_size in  
-	if not quiet then	DynArray.iter (cmd_to_lvm2 >> print_string) cmds;
+	if not quiet then DynArray.fold_left (fun ip cmd -> 
+		Printf.printf "%s //IP: %d\n" (cmd_to_lvm2 cmd) ip;
+		ip + cmd_size cmd) 0  cmds |> ignore;
 	DynArray.to_list cmds |> List.map cmd_to_bc |> List.concat;;
 				
 (*let process_micro prg = prg |> optimize_jumps |> resolve_labels cmd_size_micro 
