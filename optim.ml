@@ -23,14 +23,14 @@ let getvar (vars, _) var = try M.find var vars with Not_found -> (show_vars vars
 
 let mark vars ch = M.mapi (fun vname vvalue -> if S.mem vname ch then Complex else vvalue) vars
 
-let rec eval_stmt ctx = function
-	| DefVar name as x -> defvar ctx name, x
-	| Assign(sz, lv, rv)  -> let ctx', lv', rv' = eval_assgn ctx lv rv in ctx', Assign(sz, lv', rv')
-	| Call(name, rvs) -> ctx, Call(name, List.map (eval_rvalue ctx) rvs)   
+let rec eval_stmt ctx ((stmt,sl) as org) = match stmt with
+	| DefVar name -> defvar ctx name, org
+	| Assign(sz, lv, rv)  -> let ctx', lv', rv' = eval_assgn ctx lv rv in ctx', (Assign(sz, lv', rv'),sl)
+	| Call(name, rvs) -> ctx, (Call(name, List.map (eval_rvalue ctx) rvs),sl)   
 	| Defun(name, params, code) ->
 			let ctx' = List.fold_left (fun cx par -> setvar cx par Complex) newctx params in  
-			let _, code', _ = eval_code ctx' code in ctx, Defun(name, params, code')
-	| Ret rvs -> ctx, Ret(List.map (eval_rvalue ctx) rvs)
+			let _, code', _ = eval_code ctx' code in ctx, (Defun(name, params, code'),sl)
+	| Ret rvs -> ctx, (Ret(List.map (eval_rvalue ctx) rvs),sl)
 	| If(con, code1, code2) -> 
 			let con' = eval_cond ctx con in
 			let ctx1, code1', ch1 = eval_code ctx code1 and ctx2, code2', ch2 = eval_code ctx code2 in
@@ -38,7 +38,7 @@ let rec eval_stmt ctx = function
 			let ch = S.union ch1 ch2 in			
 			let vars' = mark vars ch in
 			let chgd' = M.fold (fun vname vvalue s -> if S.mem vname ch then S.add vname s else s) vars chgd in
-			(vars', chgd'), If(con', code1', code2')			
+			(vars', chgd'), (If(con', code1', code2'),sl)			
 	| While(con, code) -> 
 			let ctx1, code1, ch1 = eval_code ctx code in
 			let vars, chgd = ctx in 
@@ -46,23 +46,23 @@ let rec eval_stmt ctx = function
 			let (vars2, chgd2), code2, ch2 = eval_code (vars', chgd) code in
 			let con' = eval_cond (vars', chgd) con in
 			let vars'' = mark vars ch2 in
-			(vars'', chgd2), While(con', code2) 
-	| Print rv -> ctx, Print(eval_rvalue ctx rv) 
-	| Prchar rv -> ctx, Prchar(eval_rvalue ctx rv) 
+			(vars'', chgd2), (While(con', code2),sl) 
+	| Print rv -> ctx, (Print(eval_rvalue ctx rv),sl) 
+	| Prchar rv -> ctx, (Prchar(eval_rvalue ctx rv),sl) 
 	| Alloc(lv, rv) -> 
 			let ctx' = match lv with
 				| Var nm ->	setvar ctx nm Complex
 				| _ -> ctx in
-			ctx', Alloc(lv, eval_rvalue ctx rv)
-	| Comp code -> let ctx', code', _ = eval_code ctx code in ctx', Comp code'
-	| Break | Trash _ as x -> ctx, x 
-	| PostMessage(msg, rv1, rv2) -> ctx, PostMessage(msg, eval_rvalue ctx rv1, eval_rvalue ctx rv2)
+			ctx', (Alloc(lv, eval_rvalue ctx rv),sl)
+	| Comp code -> let ctx', code', _ = eval_code ctx code in ctx', (Comp code',sl)
+	| Break | Trash _  -> ctx, org 
+	| PostMessage(msg, rv1, rv2) -> ctx, (PostMessage(msg, eval_rvalue ctx rv1, eval_rvalue ctx rv2),sl)
 
 and eval_assgn ctx lv rv = 		 
 	let lv' = eval_lvalue ctx lv and rv' = eval_rvalue ctx rv in
 	let ctx' = match lv' with
 		| Var name ->
-				let value = match rv' with
+				let value = match fst rv' with
 					| Val _ | LV(Var _) -> Copy rv'
 					| _ -> Complex in
 				setvar ctx name value
@@ -73,19 +73,19 @@ and eval_lvalue ctx lv = match lv with
 	| Var _ | PVar _ | LReg _ -> lv
 	| PArith(op, lv1, rv2) -> PArith(op, eval_lvalue ctx lv1, eval_rvalue ctx rv2)			
 			
-and eval_rvalue ctx = function
-	| Val i as x -> x
+and eval_rvalue ctx ((rval,sl) as org) = match rval with
+	| Val i -> org
 	| LV (Var name) as x -> 
 			(match getvar ctx name with
 			| Undefined -> failwith ("evaluating undefined var " ^ name) 
 			| Copy rv -> rv
-			| Complex -> x)
-	| LV(PArith(op, lv, rv)) ->	LV(PArith(op, lv, eval_rvalue ctx rv))  
-	| LV lv as x -> x  
+			| Complex -> x,sl)
+	| LV(PArith(op, lv, rv)) ->	LV(PArith(op, lv, eval_rvalue ctx rv)) ,sl 
+	| LV lv  -> org  
 	| Arith(op, rv1, rv2) -> 
-			let erv1 = eval_rvalue ctx rv1 and erv2 = eval_rvalue ctx rv2 in simp_rvalue (Arith(op, erv1, erv2))
-	| FCall(name, rvs) -> FCall(name, List.map (eval_rvalue ctx) rvs)
-	| Byte rv -> Byte (eval_rvalue ctx rv) 
+			let erv1 = eval_rvalue ctx rv1 and erv2 = eval_rvalue ctx rv2 in simp_rvalue (Arith(op, erv1, erv2),sl)
+	| FCall(name, rvs) -> FCall(name, List.map (eval_rvalue ctx) rvs),sl
+	| Byte rv -> Byte (eval_rvalue ctx rv),sl
 									
 and eval_cond ctx = function
 	| Less(rv1, rv2) -> Less(eval_rvalue ctx rv1, eval_rvalue ctx rv2) 
@@ -114,7 +114,7 @@ let use (defs, uses) var =
 	
 let show set = print_string "["; S.iter (Printf.printf "%s ") set; print_string "]\n"
 
-let rec collect_stmt ctx = function
+let rec collect_stmt ctx (stmt,sl) = match stmt with
 	| DefVar name -> def ctx name
 	| Assign(_, lv, rv) | Alloc(lv, rv) -> collect_asgn ctx lv rv 
 	| Call(name, rvs) -> List.fold_left collect_rvalue ctx rvs  
@@ -134,7 +134,7 @@ and collect_asgn ctx lv rv =
 	| PVar nm -> use ctx1 nm
 	| PArith(op, lv1, rv2) -> collect_lvalue (collect_rvalue ctx1 rv2) lv1
 									
-and collect_rvalue ctx = function
+and collect_rvalue ctx (rval,sl) = match rval with
 	| LV lv -> collect_lvalue ctx lv
 	| Val _ -> ctx
 	| Arith(op, rv1, rv2) -> collect_rvalue (collect_rvalue ctx rv1) rv2
@@ -156,13 +156,13 @@ and collect_code (defs, uses) code =
 	List.fold_left collect_stmt (S.empty, uses) code 	
 	
 	
-let rec clean_stmt uses st = match st with
-	| DefVar name | Assign(_, Var name, _) | Alloc(Var name, _) -> if S.mem name uses then Some st else None 
+let rec clean_stmt uses ((st,sl) as org) = match st with
+	| DefVar name | Assign(_, Var name, _) | Alloc(Var name, _) -> if S.mem name uses then Some org else None 
 	| Assign _ | Call _	| Defun _ | Ret _	| Print _	| Prchar _ | Break | Alloc _  
-	| Trash _ | PostMessage _ -> Some st	
-	| If(con, code1, code2) -> Some(If(con, clean_code uses code1, clean_code uses code2))
-	| While(con, code) -> Some(While(con, clean_code uses code))
-	| Comp code -> Some(Comp(clean_code uses code)) 
+	| Trash _ | PostMessage _ -> Some org	
+	| If(con, code1, code2) -> Some(If(con, clean_code uses code1, clean_code uses code2),sl)
+	| While(con, code) -> Some(While(con, clean_code uses code),sl)
+	| Comp code -> Some(Comp(clean_code uses code),sl) 
 
 and clean_code uses code =
 	let k = uid () in

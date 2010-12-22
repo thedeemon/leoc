@@ -3,7 +3,8 @@ open Commons
 
 type name = string
 type code = statement list
-and statement = 
+and statement = raw_statement * source_loc
+and raw_statement = 
   | DefVar of name
   | Assign of arg_size * lvalue * rvalue
   | Call of name * rvalue list
@@ -20,7 +21,8 @@ and statement =
 	| PostMessage of int * rvalue * rvalue
   
 and lvalue = Var of name | PVar of name  | LReg of int | PArith of oper * lvalue * rvalue
-and rvalue =
+and rvalue = raw_rvalue * source_loc
+and raw_rvalue =
   | Val of int
   | LV of lvalue
   | Arith of oper * rvalue * rvalue
@@ -41,7 +43,7 @@ let assign_op = function
 let rec show_code n code = 
   code |> List.map (show_stmt n >> tab n) |> String.concat "\n" 
 	
-and show_stmt n = function
+and show_stmt n (stmt, sl) = match stmt with
   | DefVar name -> Printf.sprintf "var %s" name
   | Assign(sz, lv, rv) -> Printf.sprintf "%s %s %s" (show_lvalue lv) (assign_op sz) (show_rvalue rv)
   | Call(name, rvs) -> Printf.sprintf "%s(%s)" name (rvs |> List.map show_rvalue |> String.concat ", ")  
@@ -66,7 +68,7 @@ and show_lvalue = function
   | LReg r -> Printf.sprintf "$Reg[%d]" r
   | PArith(op, lv1, rv2) -> Printf.sprintf "$Mem[%s %s %s]" (show_lvalue lv1) (show_op op) (show_rvalue rv2)
 
-and show_rvalue = function
+and show_rvalue (rv, sl) = match rv with
   | LV lv -> show_lvalue lv
   | Val i -> string_of_int i
   | Arith(op, rv1, rv2) -> Printf.sprintf "(%s %s %s)" (show_rvalue rv1) (show_op op) (show_rvalue rv2)
@@ -84,8 +86,9 @@ and show_cond = function
 class mapper = 
   object(self)
     method map_code code = List.map self#map_stmt code
-    
-    method map_stmt = function
+		
+    method map_stmt (st,sl) = self#map_raw_stmt st, sl
+    method map_raw_stmt = function
       | Break | Trash _ | DefVar _ as x -> x
       | Assign(sz, lv, rv) -> Assign(sz, self#map_lvalue lv, self#map_rvalue rv)
       | Call(name, rvs) -> Call(name, List.map self#map_rvalue rvs)  
@@ -103,7 +106,8 @@ class mapper =
       | Var _ | PVar _ | LReg _  as x -> x
       | PArith(op, lv1, rv2) -> PArith(op, self#map_lvalue lv1, self#map_rvalue rv2)
 
-    method map_rvalue = function
+		method map_rvalue (rv, sl) = self#map_raw_rvalue rv, sl 
+    method map_raw_rvalue = function
       | LV lv -> LV (self#map_lvalue lv) 
       | Val _ as x -> x
       | Arith(op, rv1, rv2) -> Arith(op, self#map_rvalue rv1, self#map_rvalue rv2)
@@ -132,14 +136,49 @@ let subst_code_by_lvalue smap code =
 let subst_code_by_stmt f code = 
   let o = object
       inherit mapper as super
-      method map_stmt st = 
-        match f st with Some st' -> st' | None -> super#map_stmt st
+      method map_raw_stmt st = 
+        match f st with Some st' -> st' | None -> super#map_raw_stmt st
     end 
   in o#map_code code;;    
     
 (**************************** simplify *********************************)
 
-let rec simp_code code = List.map simp_stmt code
+class simpler = object(self)
+		inherit mapper as super
+		method map_raw_rvalue = function
+  		| Arith(Mul, (Val a, sl), (Val b, _)) -> Val (a * b) 
+  		| Arith(Add, (Val a, sl), (Val b, _)) -> Val (a + b) 
+  		| Arith(Sub, (Val a, sl), (Val b, _)) -> Val (a - b) 
+  		| Arith(Div, (Val a, sl), (Val b, _)) -> Val (a / b) 
+  		| Arith(Mod, (Val a, sl), (Val b, _)) -> Val (a mod b) 
+  		| Arith(Xor, (Val a, sl), (Val b, _)) -> Val (a lxor b) 
+  		| Arith(Add, rv1, (Val 0, _)) -> self#map_rvalue rv1 |> fst
+  		| Arith(Add, (Val 0,_), rv2) -> self#map_rvalue rv2 |> fst
+  		| Arith(Sub, rv1, (Val 0, _)) -> self#map_rvalue rv1 |> fst
+  		| Arith(Mul, rv1, (Val 1, _)) -> self#map_rvalue rv1 |> fst
+  		| Arith(Mul, (Val 1,_), rv2) -> self#map_rvalue rv2 |> fst
+  		| Arith(Div, rv1, (Val 1,_)) -> self#map_rvalue rv1 |> fst
+  		| Arith(op, rv1, rv2) ->  
+		      let s1 = self#map_rvalue rv1 and s2 = self#map_rvalue rv2 in
+      		if s1 = rv1 && s2 = rv2 then Arith(op, rv1, rv2) else self#map_raw_rvalue (Arith(op, s1, s2))
+			| rv -> super#map_raw_rvalue rv		      
+
+		method map_lvalue = function
+  		| PArith(Add, Var v, (Val 0,_)) -> PVar v 
+  		| PArith(Sub, Var v, (Val 0,_)) -> PVar v
+  		| PArith(op, lv1, rv2) -> 
+		      let s1 = self#map_lvalue lv1 and s2 = self#map_rvalue rv2 in
+      		if s1 = lv1 && s2 = rv2 then PArith(op, lv1, rv2) else self#map_lvalue (PArith(op, s1, s2))
+  		| _ as x -> x
+end
+
+let simp_code code = 
+	let simp = new simpler in simp#map_code code
+
+let simp_rvalue rv =
+	let simp = new simpler in simp#map_rvalue rv
+
+(*let rec simp_code code = List.map simp_stmt code
   
 and simp_stmt = function
   | DefVar _ as x-> x
@@ -190,7 +229,7 @@ and simp_cond = function
   | Eq(rv1, rv2) -> Eq(simp_rvalue rv1, simp_rvalue rv2)
   | And(con1, con2) -> And(simp_cond con1, simp_cond con2)
   | Or(con1, con2) -> Or(simp_cond con1, simp_cond con2)
-  | Not con -> Not(simp_cond con);;
+  | Not con -> Not(simp_cond con);;*)
 
 (**************************** compile **********************************)
 
@@ -258,7 +297,7 @@ let use_dst ctx = function TmpPntDest r -> freereg r ctx, Asm.PntDest r | Dst d 
 let strip_dst = function TmpPntDest r -> Asm.RegDest r | Dst d -> d
 
 let used_params ctx rv =
-  let rec gather_rv lst = function
+  let rec gather_rv lst (rval,_) = match rval with
     | LV lv -> gather_lv lst lv
     | Val _ -> lst
     | Arith(op, rv1, rv2) -> gather_rv (gather_rv lst rv1) rv2       
@@ -275,7 +314,7 @@ let rec calc_retsize name code =
     | None -> Some sz
     | Some z -> if sz <> z then failwith (Printf.sprintf "different return size in '%s': %d and %d" name z sz) 
                 else Some z in 
-  List.fold_left (fun szo cmd ->
+  List.fold_left (fun szo (cmd,_) ->
     match cmd with
     | Ret rvs -> update (List.length rvs) szo
     | DefVar _   | Assign _ | Call _  | Defun _  | Print _ | Prchar _ | Alloc _ | Break 
@@ -298,7 +337,7 @@ and compile prg =
   try compile_code [frm] prg |> snd
   with Failure s -> Printf.printf "LeoC error: %s\n" s; []
 
-and compile_stmt ctx = function
+and compile_stmt ctx (stmt, sl) = match stmt with
   | DefVar name -> addvar ctx name, []
   | Print rv ->  
       let code, src, _ = compile_rvalue ctx rv in
@@ -340,17 +379,17 @@ and compile_stmt ctx = function
       let ncx1, ccode = compile_code ncx code in      
       let ctx1 = addfun ctx name params retsize in 
       ctx1, [Triasm.Defun(name, ccode)]
-  | Ret([FCall(name, rvs)]) when name = (List.hd ctx).thisfunname ->
+  | Ret([FCall(name, rvs),sl]) when name = (List.hd ctx).thisfunname ->
       let affected_params = List.map (used_params ctx) rvs |> List.concat |> List.unique in
       let fi = getfun ctx name in
-      let actions = List.map2 (fun par rv -> if rv = LV(Var par) then None else Some(par, rv)) fi.params rvs 
+      let actions = List.map2 (fun par (rv,loc) -> if rv = LV(Var par) then None else Some(par, (rv,loc))) fi.params rvs 
         |> List.enum |> Enum.filter_map identity |> List.of_enum in
       let phase1, phase2 = List.map (fun (par, rv) ->
         if List.mem par affected_params then
           let tmp = Printf.sprintf "ret_tmp_%d" (uid()) in
-          [DefVar tmp; Assign(ASInt, Var tmp, rv)], Assign(ASInt, Var par, LV(Var tmp))
+          [DefVar tmp, sl; Assign(ASInt, Var tmp, rv), sl], (Assign(ASInt, Var par, (LV(Var tmp),sl)), sl)
         else
-          [], Assign(ASInt, Var par, rv)  ) actions |> List.split in       
+          [], (Assign(ASInt, Var par, rv),sl)  ) actions |> List.split in       
       let _, code = compile_code ctx ((List.concat phase1) @ phase2) in 
       ctx, code @ [Triasm.Goto name]      
   | Ret rvs ->
@@ -364,12 +403,13 @@ and compile_stmt ctx = function
       let delta = max fi.return_size fi.nparams in 
       let find_offs i = List.findi (fun _ offs -> offs = i) affected_offs |> fst in
       let phase1, phase2 = List.enum rvs |> Enum.foldi (fun i rv (ph1, ph2) ->
+				let sl = snd rv in
         let dest_offs = i - delta in
         (try 
           let tmp = tmps.(find_offs dest_offs) in
-          Assign(ASInt, Var tmp, rv)::ph1, Assign(ASInt, LReg dest_offs, LV(Var tmp))::ph2  
+          (Assign(ASInt, Var tmp, rv),sl)::ph1, (Assign(ASInt, LReg dest_offs, (LV(Var tmp),sl)),sl)::ph2  
         with Not_found -> 
-          Assign(ASInt, LReg dest_offs, rv)::ph1, ph2)) ([],[]) in
+          (Assign(ASInt, LReg dest_offs, rv),sl)::ph1, ph2)) ([],[]) in
       let ctx3, cph1 = compile_code ctx2 (List.rev phase1) in
       let ctx4, cph2 = compile_code ctx3 (List.rev phase2) in
       ctx4, cph1 @ cph2 @ [Triasm.Ret]    
@@ -402,12 +442,12 @@ and compile_call ctx name rvs =
   let ctx3 = Enum.init fn.return_size (fun i -> i + fp) |> Enum.fold usereg ctx in    
   arg_code @ pass_args @ [T.Call(name, fp + gap)], Src(Asm.Reg fp), ctx3
   
-and compile_rvalue ctx = function
+and compile_rvalue ctx (rval,sl) = match rval with
   | LV(Var name) -> [], Src(Asm.Reg (getvar ctx name)), ctx
   | LV(PVar name) -> [], Src(Asm.Pnt (getvar ctx name)), ctx
   | LV(LReg _) -> failwith "LReg in rvalue"
   | LV(PArith(op, lv1, rv2)) ->
-      let code, src, ctx1 = compile_rvalue ctx (Arith(op, LV lv1, rv2)) in
+      let code, src, ctx1 = compile_rvalue ctx (Arith(op, (LV lv1, sl), rv2), sl) in
       let src1 = match src with Tmp r -> TmpPnt r | _ -> failwith "wrong src type for PArith" in
       code, src1, ctx1        
   | Val n -> [], Src(Asm.Val n), ctx
@@ -430,7 +470,8 @@ and compile_lvalue ctx = function
   | PVar name -> [], Dst(Asm.PntDest (getvar ctx name)), ctx
   | LReg r -> [], Dst(Asm.RegDest r), ctx
   | PArith(op, lv1, rv2) ->      
-       let code, src, ctx1 = compile_rvalue ctx (Arith(op, LV lv1, rv2)) in
+			let sl = snd rv2 in
+      let code, src, ctx1 = compile_rvalue ctx (Arith(op, (LV lv1,sl), rv2), sl) in
       let dst = match src with Tmp r -> TmpPntDest r | _ -> failwith "wrong src type for PArith" in
       code, dst, ctx1        
   

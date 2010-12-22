@@ -49,51 +49,56 @@ let compute x =
 		| _ -> failwith "never happens"
 	with Badnum -> Add, as_sum x	 
 	
-type noise_operation = Def of name | Set of name * int
+type noise_operation = Def of name * source_loc | Set of name * int * source_loc
 
 let const_var x = Printf.sprintf "const_%d_%d" x (uid ())
 
-let var_or_val x =
+let var_or_val sl x =
 	if Random.int 4 = 1 then 
-		let varname = const_var x in LV(Var varname), [Set(varname, x)]
-	else Val x, []
+		let varname = const_var x in (LV(Var varname),sl), [Set(varname, x, sl)]
+	else (Val x, sl), []
 	
-let gen_cond tru =
+let gen_cond sl tru =
 	let a = Random.int 192 in let b = Random.int 63 + 1 + a in
 	if tru then
-		if Random.int 3 = 1 then Not(Less(Val b, Val a)) else Less(Val a, Val b)
+		if Random.int 3 = 1 then Not(Less((Val b,sl), (Val a,sl))) else Less((Val a,sl), (Val b,sl))
 	else
-		if Random.int 3 = 1 then Not(Less(Val a, Val b)) else Less(Val b, Val a)
+		if Random.int 3 = 1 then Not(Less((Val a,sl), (Val b,sl))) else Less((Val b,sl), (Val a,sl))
 	
-let add_cond con = 
+let add_cond sl con = 
 	let pswap a b = if Random.int 2 = 1 then a,b else b,a in
 	if Random.int 4 = 1 then 
 		if Random.int 2 = 1 then
-			let a, b = pswap con (gen_cond true) in	And(a, b) 
+			let a, b = pswap con (gen_cond sl true) in	And(a, b) 
 		else 
-			let a, b = pswap con (gen_cond false) in Or(a, b)
+			let a, b = pswap con (gen_cond sl false) in Or(a, b)
 	else con	
 
-let rec complicate_stmt = function
-	| DefVar _ | 	Break | Trash _ as x -> [], x	
-	| Assign(sz, lv, rv) -> let lst1, lv' = complicate_lv lv and lst2, rv' = complicate_rv rv in lst1 @ lst2, Assign(sz, lv', rv') 
-	| Call(name, rvs) -> let lsts, rvs' = List.map complicate_rv rvs |> List.split in	List.concat lsts, Call(name, rvs')   
-	| Defun(name, params, code) -> [], Defun(name, params, add_noise code)
-	| Ret rvs -> let lsts, rvs' = List.map complicate_rv rvs |> List.split in List.concat lsts, Ret rvs' 
+let get_first_sl = function
+	| [] -> no_source
+	| (_,sl)::tl -> sl 
+
+let rec complicate_stmt ((stmt,sl) as org) = match stmt with
+	| DefVar _ | 	Break | Trash _ -> [], org	
+	| Assign(sz, lv, rv) -> 
+			let lst1, lv' = complicate_lv lv and lst2, rv' = complicate_rv rv in lst1 @ lst2, (Assign(sz, lv', rv'),sl) 
+	| Call(name, rvs) -> let lsts, rvs' = List.map complicate_rv rvs |> List.split in	List.concat lsts, (Call(name, rvs'),sl)   
+	| Defun(name, params, code) -> [], (Defun(name, params, add_noise code),sl)
+	| Ret rvs -> let lsts, rvs' = List.map complicate_rv rvs |> List.split in List.concat lsts, (Ret rvs',sl) 
 	| If(con, code1, code2) -> 
-			let lst1, con' = complicate_cond con  
+			let lst1, con' = complicate_cond sl con  
 			and lst2, code1' = complicate_code true code1
 			and lst3, code2' = complicate_code true code2 in
-			lst1 @ lst2 @ lst3, If(con', code1', code2')	
+			lst1 @ lst2 @ lst3, (If(con', code1', code2'),sl)	
 	| While(con, code) -> 
-			let lst1, con' = complicate_cond con 
+			let lst1, con' = complicate_cond sl con 
 			and lst2, code' = complicate_code true code in
-			lst1 @ lst2, While(con', code') 
-	| Print _ | Prchar _ as x -> [], x  
-	| Alloc(lv, rv) -> let lst1, lv' = complicate_lv lv and lst2, rv' = complicate_rv rv in lst1 @ lst2, Alloc(lv', rv')
-	| Comp code -> let lst, code' = complicate_code true code in lst, Comp code'
+			lst1 @ lst2, (While(con', code'),sl) 
+	| Print _ | Prchar _ -> [], org  
+	| Alloc(lv, rv) -> let lst1, lv' = complicate_lv lv and lst2, rv' = complicate_rv rv in lst1 @ lst2, (Alloc(lv', rv'),sl)
+	| Comp code -> let lst, code' = complicate_code true code in lst, (Comp code',sl)
 	| PostMessage(msg, rv1, rv2) -> let lst1, rv1' = complicate_rv rv1 and lst2, rv2' = complicate_rv rv2 in 
-																	lst1 @ lst2, PostMessage(msg, rv1', rv2')
+																	lst1 @ lst2, (PostMessage(msg, rv1', rv2'),sl)
 
 and complicate_lv = function
 	| Var _	| PVar _	| LReg _ as x -> [], x 
@@ -102,32 +107,32 @@ and complicate_lv = function
 			let lst2, rv' = complicate_rv rv2 in
 			lst1 @ lst2, PArith(op, lv', rv')
 			
-and complicate_rv = function
-	| LV lv -> let lst, lv' = complicate_lv lv in lst, LV lv'
-	| Val i -> let varname = const_var i in [Set(varname, i)], LV(Var varname)
+and complicate_rv (rval,sl) = match rval with
+	| LV lv -> let lst, lv' = complicate_lv lv in lst, (LV lv', sl)
+	| Val i -> let varname = const_var i in [Set(varname, i, sl)], (LV(Var varname),sl)
 	| Arith(op, rv1, rv2) -> 
 			let lst1, rv1' = complicate_rv rv1 and lst2, rv2' = complicate_rv rv2 in
-			lst1 @ lst2, Arith(op, rv1', rv2') 
+			lst1 @ lst2, (Arith(op, rv1', rv2'),sl) 
 	| FCall(name, rvs) -> 
 			let lsts, rvs' = List.map complicate_rv rvs |> List.split in
-			List.concat lsts, FCall(name, rvs')
-	| Byte rv -> let lst, rv' = complicate_rv rv in lst, Byte rv'
+			List.concat lsts, (FCall(name, rvs'),sl)
+	| Byte rv -> let lst, rv' = complicate_rv rv in lst, (Byte rv',sl)
 
-and complicate_cond con = con |> add_cond |> deconst_cond 
+and complicate_cond sl con = con |> add_cond sl |> deconst_cond sl
 	
-and deconst_cond = function 
+and deconst_cond sl = function 
 	| Less(rv1, rv2) -> let lst1, rv1' = complicate_rv rv1 and lst2, rv2' = complicate_rv rv2 in lst1 @ lst2, Less(rv1', rv2')
 	| Eq(rv1, rv2) -> let lst1, rv1' = complicate_rv rv1 and lst2, rv2' = complicate_rv rv2 in lst1 @ lst2, Eq(rv1', rv2')
-	| And(con1, con2) -> let lst1, con1' = complicate_cond con1 and lst2, con2' = complicate_cond con2 in 
+	| And(con1, con2) -> let lst1, con1' = complicate_cond sl con1 and lst2, con2' = complicate_cond sl con2 in 
 			lst1 @ lst2, And(con1', con2')
-	| Or(con1, con2) -> let lst1, con1' = complicate_cond con1 and lst2, con2' = complicate_cond con2 in 
+	| Or(con1, con2) -> let lst1, con1' = complicate_cond sl con1 and lst2, con2' = complicate_cond sl con2 in 
 			lst1 @ lst2, Or(con1', con2')
-	| Not con -> let lst, con' = complicate_cond con in lst, Not con'
+	| Not con -> let lst, con' = complicate_cond sl con in lst, Not con'
 
 and deconst_code on code =
 	match on, code with
 	| _, [] -> [], []
-	| _, (Trash t)::tail -> let lst, code' =  deconst_code t tail in lst, (Trash t)::code'
+	| _, (Trash t, sl)::tail -> let lst, code' =  deconst_code t tail in lst, (Trash t, sl)::code'
 	| false, st::tail -> let lst, code' = deconst_code false tail in lst, st::code'
 	| true, st::tail ->
 			let lst1, st' = complicate_stmt st 
@@ -157,11 +162,11 @@ and add_noise code =
 	(mknoise lst2) @ code2
 		
 and gen_noise = function
-	| Def name -> [], DefVar name
-	| Set(name, value) -> 
+	| Def(name,sl) -> [], (DefVar name,sl)
+	| Set(name, value,sl) -> 
 			let op, (a,b) = compute value in
-			let rv1, op1 = var_or_val a and rv2, op2 = var_or_val b in						  
-			[Def name] @ op1 @ op2, Assign(ASInt, Var name, Arith(op, rv1, rv2))	
+			let rv1, op1 = var_or_val sl a and rv2, op2 = var_or_val sl b in						  
+			[Def(name,sl)] @ op1 @ op2, (Assign(ASInt, Var name, (Arith(op, rv1, rv2),sl)),sl)	
 
 and reshape_code (oplist, code) = 
 	let rec reshape cur_level shape_code =
@@ -176,18 +181,19 @@ and reshape_code (oplist, code) =
 						let lifted_shape_code = List.takewhile (fun (x,_) -> x > cur_level) shape_code in
 						let nlifted = List.length lifted_shape_code in
 						let rest_shape_code = List.drop nlifted shape_code in
-						let defs_sc, other_lifted_sc = List.partition (function (_,DefVar _) -> true | _ -> false) lifted_shape_code in
+						let defs_sc, other_lifted_sc = List.partition (function (_,(DefVar _,_)) -> true | _ -> false) lifted_shape_code in
 						let defs_code = List.map snd defs_sc in
-						let chunk_oplist, shaped_code = reshape (cur_level+1) other_lifted_sc in
+						let chunk_oplist, shaped_code = reshape (cur_level+1) other_lifted_sc in	
+						let sl = get_first_sl shaped_code in					
 						let con_lst, ifst =
 							if Random.int 2 = 0 then
-								let ls, cond = gen_cond true |> complicate_cond in
+								let ls, cond = gen_cond sl true |> complicate_cond sl in
 								ls, If(cond, shaped_code, []) 
 							else
-								let ls, cond = gen_cond false |> complicate_cond in
+								let ls, cond = gen_cond sl false |> complicate_cond sl in
 								ls, If(cond, [], shaped_code) in
 						let lst, code' = reshape cur_level rest_shape_code in
-						con_lst @ chunk_oplist @ lst, defs_code @ (ifst :: code')
+						con_lst @ chunk_oplist @ lst, defs_code @ ((ifst,sl) :: code')
 					else failwith "reshape: level < cur_level"   in
   let shape_code = List.combine (List.length code |> gen_shape) code |> flatten_notrash in
 	(*List.iter (fun (lev, st) -> Printf.printf "~%d: %s\n" lev (show_stmt 0 st)) shape_code;*)  					
@@ -198,8 +204,8 @@ and flatten_notrash shape_code =
 	let rec flatten prevlev notr shcd = 
 		match notr, shcd with
 		| _, [] -> []
-		| _, ((lev, Trash false) as x)::tail -> x::(flatten lev true tail)
-		| _, (lev, Trash true)::tail -> (prevlev, Trash true)::(flatten lev false tail)
+		| _, ((lev, (Trash false, _)) as x)::tail -> x::(flatten lev true tail)
+		| _, (lev, (Trash true, sl))::tail -> (prevlev, (Trash true, sl))::(flatten lev false tail)
 		| true, (lev, st)::tail -> (prevlev, st)::(flatten prevlev true tail)
 		| false, x::tail -> x::(flatten prevlev false tail)  in   			
 	flatten 0 false shape_code		

@@ -27,7 +27,7 @@ let process prg bc_handler quiet trash =
 	let scode = ccode |> Optim.optimize |> Leoc.simp_code in 
 	scode |> maybe (Leoc.show_code 0 >> print_endline);
 	maybe print_endline "\nnoisy LeoC:\n";
-	let noisy_ccode = Noise.add_noise (Leoc.Trash trash :: scode) in
+	let noisy_ccode = Noise.add_noise ((Leoc.Trash trash, 1) :: scode) in
 	maybe (Leoc.show_code 0 >> print_endline) noisy_ccode;
 	maybe print_endline "\nasm:\n";
 	let bytecode = noisy_ccode |> Leoc.compile |> Triasm.process quiet in
