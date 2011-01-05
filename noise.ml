@@ -102,10 +102,13 @@ let rec complicate_stmt ((stmt,sl) as org) = match stmt with
 
 and complicate_lv = function
 	| Var _	| PVar _	| LReg _ as x -> [], x 
-	| PArith(op, lv1, rv2) ->
+	(*| PArith(op, lv1, rv2) ->
 			let lst1, lv' = complicate_lv lv1 in
 			let lst2, rv' = complicate_rv rv2 in
-			lst1 @ lst2, PArith(op, lv', rv')
+			lst1 @ lst2, PArith(op, lv', rv')*)
+	| Mem rv -> 
+			let lst, rv' = complicate_rv rv in
+			lst, Mem rv'
 			
 and complicate_rv (rval,sl) = match rval with
 	| LV lv -> let lst, lv' = complicate_lv lv in lst, (LV lv', sl)

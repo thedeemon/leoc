@@ -1,6 +1,8 @@
 open ExtLib
 open Commons
 
+type 'a tree = Elt of 'a | Seq of 'a tree list
+
 type dst = Asm.dst
 type src = Asm.src
 type name = string
@@ -28,7 +30,7 @@ and condition =
 	| Or of condition * condition
 	| Not of condition;;
 
-let da x = DynArray.of_list [x];;
+let da x = Elt x;;(* DynArray.of_list [x];;*)
 
 let rec compile_stmt ctx (stmt,sl) = match stmt with
 	| Arith(op, d, a1, a2) -> da (Asm.Arith(op, d, a1, a2),sl)
@@ -39,64 +41,68 @@ let rec compile_stmt ctx (stmt,sl) = match stmt with
 	| Call(lab, a1) -> da (Asm.Call(lab, Asm.Val a1), sl)
 	| Defun(name, code) -> 
 			let end_lab = Printf.sprintf "endproc_%d" (uid ()) in
-			let asm = da (Asm.Jmp end_lab, sl) in
-			DynArray.add asm (Asm.Label name, sl);
-			DynArray.append (compile [] code) asm;
-			DynArray.add asm (Asm.Ret, sl);
-			DynArray.add asm (Asm.Label end_lab, sl);
-			asm
+			Seq [Elt (Asm.Jmp end_lab, sl);
+			Elt (Asm.Label name, sl);
+			compile [] code;
+			Elt (Asm.Ret, sl);
+			Elt (Asm.Label end_lab, sl)]
 	| If(cond, then_code, else_code) ->	compile_if ctx cond (compile ctx then_code) (compile ctx else_code) sl
 	| While(cond, code) ->
 			let k = uid () in
 			let while_lab = Printf.sprintf "while_cond_%d" k and body_lab = Printf.sprintf "while_body_%d" k 
 			and end_lab = Printf.sprintf "endloop_%d" k in
-			let asm = da (Asm.Jmp while_lab, sl) in
-			DynArray.add asm (Asm.Label body_lab, sl);
-			DynArray.append (compile (end_lab::ctx) code) asm;
-			DynArray.add asm (Asm.Label while_lab, sl);
-			DynArray.append (compile_if ctx cond (da (Asm.Jmp body_lab, sl)) (DynArray.make 0) sl) asm;
-			DynArray.add asm (Asm.Label end_lab, sl);
-			asm	  
+			Seq [Elt (Asm.Jmp while_lab, sl);
+			Elt(Asm.Label body_lab, sl);
+			compile (end_lab::ctx) code;
+			Elt (Asm.Label while_lab, sl);
+			compile_if ctx cond (Elt (Asm.Jmp body_lab, sl)) (Seq []) sl;
+			Elt (Asm.Label end_lab, sl)]	  
 	| Ret -> da (Asm.Ret, sl) 
-	| Break -> (match ctx with end_lab::rest -> da(Asm.Jmp end_lab, sl) | [] -> failwith "break from not a loop")
+	| Break -> (match ctx with end_lab::rest -> da(Asm.Jmp end_lab, sl) | [] -> failc "break from not a loop" sl)
 	| Goto name -> da (Asm.Jmp name, sl)
 	| PostMessage(msg, a1, a2) -> da (Asm.PostMessage(msg, a1, a2), sl)
 
 and compile ctx prg = 
-	prg |> List.enum |> Enum.map (compile_stmt ctx >> DynArray.enum) |> Enum.concat |> DynArray.of_enum 
+	(*prg |> List.enum |> Enum.map (compile_stmt ctx >> DynArray.enum) |> Enum.concat |> DynArray.of_enum*)
+	Seq (List.map (compile_stmt ctx) prg)
 	
 and compile_if ctx cond then_ else_ sl =
 	let comp_condjmp c1 c2 jmp_cmd =
 	  let id = uid () in
 		let then_lab = Printf.sprintf "then_%d" id and end_lab = Printf.sprintf "endif_%d" id in
-		let asm = compile ctx c1 in
-		DynArray.append (compile ctx c2) asm;
-		DynArray.add asm (jmp_cmd then_lab); 
-		DynArray.append else_ asm;
-		DynArray.add asm (Asm.Jmp end_lab, sl);
-		DynArray.add asm (Asm.Label then_lab, sl);
-		DynArray.append then_ asm;
-		DynArray.add asm (Asm.Label end_lab, sl);
-		asm in
+		Seq [compile ctx c1;
+		compile ctx c2;
+		Elt(jmp_cmd then_lab); 
+		else_ ;
+		Elt (Asm.Jmp end_lab, sl);
+		Elt (Asm.Label then_lab, sl);
+		then_;
+		Elt (Asm.Label end_lab, sl)] in
 	match cond with
 	| Less(c1, a1, c2, a2) -> comp_condjmp c1 c2 (fun then_lab -> Asm.Jmple(then_lab, a1, a2), sl)
 	| Eq(c1, a1, c2, a2)   -> comp_condjmp c1 c2 (fun then_lab -> Asm.Jmpeq(then_lab, a1, a2), sl)
 	| Not con -> compile_if ctx con else_ then_ sl
 	| And(con1, con2) -> 
 			let else_lab = Printf.sprintf "else_%d" (uid ()) in
-			let else2 = da (Asm.Label else_lab, sl) in
-			DynArray.append else_ else2;  
+			let else2 = Seq [Elt (Asm.Label else_lab, sl); else_] in
 			let code2 = compile_if ctx con2 then_ else2 sl in
 			compile_if ctx con1 code2 (da (Asm.Jmp else_lab, sl)) sl
 	| Or(con1, con2) -> 
 			let then_lab = Printf.sprintf "then_%d" (uid ()) in
-			let then1 = da (Asm.Label then_lab, sl) in
-			DynArray.append then_ then1;
+			let then1 = Seq[ Elt (Asm.Label then_lab, sl); then_] in
 			let then2 = da (Asm.Jmp then_lab, sl) in
 			let else1 = compile_if ctx con2 then2 else_ sl in
 			compile_if ctx con1 then1 else1 sl;;
 
-let process quiet prg = prg |> compile [] |> Asm.process quiet;;
+let rec iter_tree f = function
+	| Elt x -> f x
+	| Seq lst -> List.iter (iter_tree f) lst 
+
+let to_dynarr da tr = iter_tree (DynArray.add da) tr; da;;
+
+let process quiet prg = prg |> Prof.prof2 "Triasm.compile" compile []
+  |> to_dynarr (DynArray.make 1000) 
+	|> Prof.prof2 "Asm.process" Asm.process quiet;;
 
 (*module A = Asm;;
 let prg = [

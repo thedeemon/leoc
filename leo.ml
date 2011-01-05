@@ -217,7 +217,7 @@ and expander ctx = object(self)
 	method expand_call name elist =
 		try
 			(match get_name ctx name with
-			| NValue -> failwith (Printf.sprintf "'%s' is not a function" name)
+			| NValue -> failc (Printf.sprintf "'%s' is not a function" name) (List.hd elist |> snd)
 			| NFun(name_list, exp) ->
 					if List.length name_list <> List.length elist then failwith (Printf.sprintf "wrong number of arguments for '%s'" name);
 					let k = uid () in
@@ -234,7 +234,7 @@ and expander ctx = object(self)
 					let narg = List.length elist in
 					if np = narg then Call(name, List.map self#map_expr elist)
 					else failwith (Printf.sprintf "wrong number of arguments for '%s' (%d instead of %d)" name narg np))
-		with Not_found -> failwith (Printf.sprintf "function '%s' not found" name)
+		with Not_found -> failc (Printf.sprintf "function '%s' not found" name) (List.hd elist |> snd)
 end 
 
 and argval k (argname, argexp) =
@@ -364,11 +364,11 @@ let rec compile_path ctx sl (name, flds) =
 				match fields with
 				| [] -> ctx, [], ty, [C.LV lv, sl]
 				| fld:: fs ->
-						let sty = try M.find sname !struct_types with Not_found -> failwith ("unknown type "^sname) in
-						let fty = try List.assoc fld sty with Not_found -> failwith (Printf.sprintf "unknown field %s in type %s" fld sname) in
+						let sty = try M.find sname !struct_types with Not_found -> failc ("unknown type "^sname) sl in
+						let fty = try List.assoc fld sty with Not_found -> failc (Printf.sprintf "unknown field %s in type %s" fld sname) sl in
 						let vty = valtype_of_ftype fty in
 						let fidx = List.findi (fun _ (fname, _) -> fname = fld) sty |> fst in
-						let lv1 = C.PArith(Add, lv, (C.Val(!int_size * fidx), sl)) in
+						let lv1 = C.Mem(C.Arith(Add, (C.LV lv, sl), (C.Val(!int_size * fidx), sl)),sl) in
 						loop lv1 vty fs (fld:: lfields) in
 	loop (C.Var name) (gettype ctx name) flds []
 
@@ -398,12 +398,12 @@ and compile_lvalue ctx sl = function
 				| TArray(TInt, len) -> TInt, len, !int_size
 				| TArray(TInt32, len) -> TInt32, len, 4
 				| TArray(TByte, len) -> TByte, len, 1
-				| _ -> failwith (Printf.sprintf "%s is not an array or a bad one" (show_path path)) in
+				| _ -> failc (Printf.sprintf "%s is not an array or a bad one" (show_path path)) sl in
 			let is_idx_range, idx_rv, end_rvo = match ety, erc with
 				| TInt, [rv] -> false, rv, None
 				| TByte, [rv] -> false, (Leoc.Byte rv, esl), None
 				| TRange(n1, n2), [rv1; rv2] -> true, rv1, Some rv2
-				| t, _ -> failwith (Printf.sprintf "bad type of array index: %s : %s" (show_expr 0 ie) (show_type t)) in
+				| t, _ -> failc (Printf.sprintf "bad type of array index: %s : %s" (show_expr 0 ie) (show_type t)) sl in
 			let lv = match prc with (C.LV lv, _) :: _ -> lv | _ -> failwith "bad result of path compilation" in
 			if is_idx_range then
 				let lenvar = Printf.sprintf "arr_len_%d" (uid()) in
@@ -414,7 +414,7 @@ and compile_lvalue ctx sl = function
 				let rc = [C.Arith(Add, List.hd prc, rv_begin), esl; C.LV(C.Var lenvar), esl] in
 				ctx2, code1 @ code2 @ len_code, TArray(aty, NVar lenvar), rc
 			else
-				let lv_res = Leoc.PArith(Add, lv, (Leoc.Arith(Mul, idx_rv, (Leoc.Val elt_size,esl)),sl)) in
+				let lv_res = Leoc.Mem(Leoc.Arith(Add, (C.LV lv,sl), (Leoc.Arith(Mul, idx_rv, (Leoc.Val elt_size,esl)),sl)),sl) in
 				ctx2, code1 @ code2, aty, [C.LV lv_res, sl]
 
 and compile_stmt ctx (stmt, loc) = match stmt with
@@ -431,8 +431,8 @@ and compile_stmt ctx (stmt, loc) = match stmt with
 					| TByte, [rv] -> [Leoc.DefVar name, loc; Leoc.Assign(ASByte, Leoc.Var name, rv), loc]
 					| TArray(aty, alen), [rva; rvlen] -> [Leoc.DefVar name, loc; Leoc.Assign(ASInt, Leoc.Var name, rva), loc]
 					| TRange(n1, n2), [rv1; rv2] -> [] (* data already exist and referenced in type *)
-					| TVoid, _ -> failwith ("defining a void value "^name)
-					| _, _ -> failwith "bad number of values in Def") in
+					| TVoid, _ -> failc ("defining a void value "^name) loc
+					| _, _ -> failc "bad number of values in Def" loc) in
 			ctx2, Code(code1 @ code2)
 	| Def(name, arglist, exp) ->
 			addfundef name arglist (returnize exp);
@@ -461,7 +461,7 @@ and compile_stmt ctx (stmt, loc) = match stmt with
 						let st = For([ivar, (LV lv, sl); jvar, e], [
 								Write(Var(mkpath ivar []), (LV(Var(mkpath jvar [])), sl)), sl
 								]) in
-						(match compile_stmt ctx (st,sl) with _, Code code' -> code' | _, _ -> failwith "bad result of array copy compilation")
+						(match compile_stmt ctx (st,sl) with _, Code code' -> code' | _, _ -> failc "bad result of array copy compilation" loc)
 				| TArray _, TInt,  _, _ 
 				| TArray _, TInt32,  _, _ 
 				| TArray _, TByte, _, _ -> 
@@ -470,9 +470,9 @@ and compile_stmt ctx (stmt, loc) = match stmt with
 						let st = For([ivar, (LV lv, sl)], [
 								Write(Var(mkpath ivar []), e), sl
 								]) in
-						(match compile_stmt ctx (st,sl) with _, Code code' -> code' | _, _ -> failwith "bad result of array copy compilation")
-				| _, _, _, _ -> failwith (Printf.sprintf "wrong types in assignment %s: %s and %s"
-									(show_stmt 0 orgst) (show_type lty) (show_type ty)) in
+						(match compile_stmt ctx (st,sl) with _, Code code' -> code' | _, _ -> failc "bad result of array copy compilation" loc)
+				| _, _, _, _ -> failc (Printf.sprintf "wrong types in assignment %s: %s and %s"
+									(show_stmt 0 orgst) (show_type lty) (show_type ty)) loc in
 			ctx, Code(code1 @ code2 @ code3)
 	| Print es ->
 			let print_code e = 
@@ -491,8 +491,8 @@ and compile_stmt ctx (stmt, loc) = match stmt with
 								]) in
 							(match compile_stmt ctx (st,sl) with 
 								| _, Code cd -> Leoc.subst_code_by_stmt (function Leoc.Print x -> Some(Leoc.Prchar x) | _ -> None) cd									 
-								| _ -> failwith "bad result of print compile")						 
-					| _, _ -> failwith (Printf.sprintf "bad argument type for print(%s): %s" (show_expr 0 e) (show_type ty)) in
+								| _ -> failc "bad result of print compile" loc)						 
+					| _, _ -> failc (Printf.sprintf "bad argument type for print(%s): %s" (show_expr 0 e) (show_type ty)) loc in
 				code @ prcode  in
 			ctx, Code(List.map print_code es |> List.concat)
 	| Expr e ->
@@ -515,10 +515,10 @@ and compile_stmt ctx (stmt, loc) = match stmt with
 												| TByte -> C.Arith(Add, rv1, rv_len), 1
 												| TInt32 -> C.Arith(Add, rv1, (C.Arith(Mul, rv_len, (C.Val 4,loc)),loc)), 4
 												| TInt -> C.Arith(Add, rv1, (C.Arith(Mul, rv_len, (C.Val !int_size,loc)),loc)), !int_size
-												| _ -> failwith "bad array type in for" in
+												| _ -> failc "bad array type in for" loc in
 											[C.Assign(ASInt, C.Var iname, rv1),loc; 
 											 C.Assign(ASInt, C.Var end_name, (rv_end,loc)),loc], delta, aty, C.PVar iname
-									| _, _ -> failwith "bad type in for" in
+									| _, _ -> failc "bad type in for" loc in
 								let next_code = [C.Assign(ASInt, Leoc.Var iname, 
 								                 (C.Arith(Add, (C.LV(C.Var iname),loc), (C.Val delta,loc)),loc)),loc] in
 								let cond = C.Less((C.LV(C.Var iname),loc), (C.LV(C.Var end_name),loc)) in
@@ -543,7 +543,7 @@ and compile_stmt ctx (stmt, loc) = match stmt with
 				| TInt, rvs -> ctx, Code (code @ [Leoc.Ret rvs, sl])
 				| TByte, rvs -> ctx, Code (code @ [Leoc.Ret (List.map (fun rv -> (Leoc.Byte rv, snd rv)) rvs),sl])
 				| TVoid, _ -> ctx, Code (code @ [Leoc.Ret [],sl])
-				| _, _ -> failwith (Printf.sprintf "trying to return a %s" (show_type ty)))
+				| _, _ -> failc (Printf.sprintf "trying to return a %s" (show_type ty)) loc)
 	| Typedef (name, ty) -> struct_types := M.add name ty !struct_types; ctx, Code []
 	| Typing (varname, typename) -> addvar ctx varname (TStruct typename), Code []
 	| Trash on -> ctx, Code [Leoc.Trash on, loc]
@@ -552,7 +552,7 @@ and compile_stmt ctx (stmt, loc) = match stmt with
 			and _, code2, ty2, rc2 = compile_expr ctx e2 in
 			match ty1, ty2, rc1, rc2 with
 			| TInt, TInt, [rv1], [rv2] -> ctx, Code[Leoc.PostMessage(msg, rv1, rv2), loc]
-			| _, _, _, _ -> failwith "not ints in PostMessage" 
+			| _, _, _, _ -> failc "not ints in PostMessage" loc 
 
 and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.code * val_type * Leoc.rvalue list) = 
 	fun ctx (rexp,loc) -> match rexp with
@@ -572,7 +572,7 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 					let to_int ty rv = if ty = TByte then (C.Byte rv, snd rv) else rv in
 					let is_num ty = ty = TInt || ty = TByte in
 					let check_num ty e =
-						if not(is_num ty) then failwith ("not a number in range constructor: " ^ (show_expr 0 e)) in
+						if not(is_num ty) then failc ("not a number in range constructor: " ^ (show_expr 0 e)) loc in
 					check_num ty1 e1;
 					check_num ty2 e2;
 					let ctx3, code3, num1 = num_of_rv ctx2 (to_int ty1 (List.hd rc1)) in
@@ -584,17 +584,17 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 							| TArray(aty, alen) -> rv_of_num ctx loc alen
 							| TRange(n1, n2) -> let rv1 = rv_of_num ctx loc n1 and rv2 = rv_of_num ctx loc n2 in
 									Leoc.Arith(Add, (Leoc.Arith(Sub, rv2, rv1), loc), (Leoc.Val 1, loc)), loc
-							| _ -> failwith (Printf.sprintf "bad type in Length(%s), type: %s" (show_expr 0 exp) (show_type ty))) in
+							| _ -> failc (Printf.sprintf "bad type in Length(%s), type: %s" (show_expr 0 exp) (show_type ty)) loc) in
 					ctx1, code1, TInt, [rv]
 			| Head exp ->
 					let _, code1, ty, rc = compile_expr ctx exp in
 					let hty, rv = (match ty with
 							| TArray(aty, alen) -> aty, (match List.hd rc with
 										| C.LV(C.Var v),_ -> C.LV(C.PVar v), loc
-										| C.Arith(op, (C.LV a, _), b),_ -> C.LV (C.PArith(op, a, b)), loc
+										| ((C.Arith _,_) as ar) -> C.LV (C.Mem ar), loc
 										| _ -> failwith "head of strange array")
 							| TRange(n1, n2) -> TInt, rv_of_num ctx loc n1
-							| _ -> failwith (Printf.sprintf "bad type in Head(%s), type: %s" (show_expr 0 exp) (show_type ty))) in
+							| _ -> failc (Printf.sprintf "bad type in Head(%s), type: %s" (show_expr 0 exp) (show_type ty)) loc) in
 					ctx, code1, hty, [rv]
 			| Tail exp ->
 					let _, code1, ty, rc1 = compile_expr ctx exp in
@@ -609,7 +609,7 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 												  (C.Arith(Sub, (C.LV(C.Var nm),loc), (C.Val 1,loc)),loc)), loc], NVar lenvar in
 									let elt_size = match aty with 
 										| TInt32 -> 4 | TInt -> !int_size | TByte -> 1 
-										| _ -> failwith "Tail of an array of an unsuported type" in
+										| _ -> failc "Tail of an array of an unsuported type" loc in
 									code, TArray(aty, len'), [C.Arith(Add, List.hd rc1, (C.Val elt_size,loc)), loc; rv_of_num ctx loc len']
 							| TRange(n1, n2) ->
 									let code, num1 = match n1 with
@@ -619,14 +619,14 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 												[C.DefVar numvar, loc; 
 												 C.Assign(ASInt, C.Var numvar, (C.Arith(Add, (C.LV(C.Var nm),loc), (C.Val 1, loc)),loc)), loc], NVar numvar in
 									code, TRange(num1, n2), [rv_of_num ctx loc num1; rv_of_num ctx loc n2]
-							| _ -> failwith (Printf.sprintf "bad type in Head(%s), type: %s" (show_expr 0 exp) (show_type ty))) in
+							| _ -> failc (Printf.sprintf "bad type in Head(%s), type: %s" (show_expr 0 exp) (show_type ty)) loc) in
 					ctx, code1 @ code2, tty, rvs
 			| New(arrtype, [e]) ->
 					let ctx1, code1, ety, erc = compile_expr ctx e in
 					let size_rv = match ety, erc with
 						| TInt, [rv] -> rv
 						| TByte, [rv] -> (Leoc.Byte rv, snd rv)
-						| _, _ -> failwith "wrong size type in New" in
+						| _, _ -> failc "wrong size type in New" loc in
 					let size_rv2 = match arrtype with 
 						| ASByte -> size_rv 
 						| ASInt -> Leoc.Arith(Mul, size_rv, (Leoc.Val !int_size, loc)), loc 
@@ -672,7 +672,7 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 							| TRange _, TRange _ -> true
 							| TArray(t1, _), TArray(t2, _) when t1 = t2 -> true
 							| _, _ -> false in
-					if not types_ok then failwith (Printf.sprintf "different types in If: %s and %s" (show_type ty1) (show_type ty2));
+					if not types_ok then failc (Printf.sprintf "different types in If: %s and %s" (show_type ty1) (show_type ty2)) loc;
 					let tmp_vars = List.map (fun _ -> Printf.sprintf "if_res_%d" (uid())) rc2 in
 					let store rc =
 						let rvs = Array.of_list rc in
@@ -681,7 +681,7 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 					let store1 = store rc1 and store2 = store rc2 in
 					let res = List.map (fun tmp -> C.LV(C.Var tmp), loc) tmp_vars in
 					ctx, con_code @ def_tmp_vars @ [Leoc.If(ccon, code1 @ store1, code2 @ store2),loc], ty2, res
-			| Lambda(name_list, e) -> failwith "not expanded lambda expression"
+			| Lambda(name_list, e) -> failc "not expanded lambda expression" loc
 			| Comp code ->
 					(match List.rev code with
 						| (Expr e,sl) :: rest_code ->

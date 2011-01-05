@@ -265,7 +265,7 @@ let process quiet prg =
 	if not quiet then DynArray.fold_left (fun ip cmd -> 
 		Printf.printf "%s //IP: %d\n" (cmd_to_lvm2 cmd) ip;
 		ip + cmd_size cmd) 0  cmds |> ignore;
-	DynArray.to_list cmds |> List.map cmd_to_bc |> List.concat;;
+	cmds |> (DynArray.to_list >> List.map cmd_to_bc >> List.concat);;
 				
 (*let process_micro prg = prg |> optimize_jumps |> resolve_labels cmd_size_micro 
   |> DynArray.iter (cmd_to_micro >> print_string);;*)

@@ -4,12 +4,13 @@ open Leoc
 
 (**************** partial evaluation ***************)
 
-type var_value =  Undefined | Copy of rvalue | Complex
+type var_value =  Undefined | Copy of rvalue | Complex | CopyPlus of rvalue * int
 
 module S = Set.Make(String)
 
 let show_val = function
 	| Undefined -> "undef" | Copy rv -> "copy of "^(Leoc.show_rvalue rv) | Complex -> "something"
+	| CopyPlus(rv, n) -> Printf.sprintf "copy of %s + %d" (Leoc.show_rvalue rv) n
 	
 let show_vars = M.iter (fun name value -> Printf.printf "[%s = %s] " name (show_val value)) 
 		
@@ -17,7 +18,11 @@ let newctx = M.empty, S.empty
 let defvar (vars, chg) var = M.add var Undefined vars, chg
 let setvar (vars, chg) var value = 
 	if !verbose then Printf.printf "#setvar %s = %s\n" var (show_val value);
-	M.add var value vars, S.add var chg
+	let vars' = M.map (function 
+		| Copy (LV(Var name),_) when name=var -> Complex 
+		| CopyPlus((LV(Var name),_),_) when name=var -> Complex 
+		| x -> x) vars in 
+	M.add var value vars', S.add var chg
 	
 let getvar (vars, _) var = try M.find var vars with Not_found -> (show_vars vars; failwith ("Optim: var not found: "^var)) 
 
@@ -64,6 +69,8 @@ and eval_assgn ctx lv rv =
 		| Var name ->
 				let value = match fst rv' with
 					| Val _ | LV(Var _) -> Copy rv'
+					| Arith(Add, (LV(Var v),sl), (Val n,_))
+					| Arith(Add, (Val n,_), (LV(Var v),sl)) -> CopyPlus((LV(Var v),sl), n)
 					| _ -> Complex in
 				setvar ctx name value
 		| _ -> ctx in 
@@ -71,17 +78,26 @@ and eval_assgn ctx lv rv =
 			
 and eval_lvalue ctx lv = match lv with
 	| Var _ | PVar _ | LReg _ -> lv
-	| PArith(op, lv1, rv2) -> PArith(op, eval_lvalue ctx lv1, eval_rvalue ctx rv2)			
+	(*| PArith(op, lv1, rv2) -> PArith(op, eval_lvalue ctx lv1, eval_rvalue ctx rv2)*)	
+	| Mem rv -> Mem (eval_rvalue ctx rv)		
 			
 and eval_rvalue ctx ((rval,sl) as org) = match rval with
 	| Val i -> org
-	| LV (Var name) as x -> 
+	| LV (Var name) -> 
 			(match getvar ctx name with
-			| Undefined -> failwith ("evaluating undefined var " ^ name) 
+			| Undefined -> failc ("evaluating undefined var " ^ name) sl
 			| Copy rv -> rv
-			| Complex -> x,sl)
-	| LV(PArith(op, lv, rv)) ->	LV(PArith(op, lv, eval_rvalue ctx rv)) ,sl 
-	| LV lv  -> org  
+			| CopyPlus _	| Complex -> org)
+	(*| LV(PArith(op, lv, rv)) ->	LV(PArith(op, lv, eval_rvalue ctx rv)) ,sl 
+	| LV(Mem rv -> Mem*) 
+	| LV lv  -> LV (eval_lvalue ctx lv), sl
+	| Arith(Add, (LV(Var name),sl), (Val a,_)) 
+	| Arith(Add, (Val a,_), (LV(Var name),sl)) ->
+			(match getvar ctx name with
+			| Undefined -> failc ("evaluating undefined var " ^ name) sl 
+			| Copy rv -> simp_rvalue (Arith(Add, rv, (Val a,sl)),sl)
+			| CopyPlus(rv, b) -> simp_rvalue (Arith(Add, rv, (Val(a+b),sl)),sl)
+			| Complex -> org) 
 	| Arith(op, rv1, rv2) -> 
 			let erv1 = eval_rvalue ctx rv1 and erv2 = eval_rvalue ctx rv2 in simp_rvalue (Arith(op, erv1, erv2),sl)
 	| FCall(name, rvs) -> FCall(name, List.map (eval_rvalue ctx) rvs),sl
@@ -130,9 +146,11 @@ let rec collect_stmt ctx (stmt,sl) = match stmt with
 and collect_asgn ctx lv rv =									
 	let ctx1 = collect_rvalue ctx rv in
 	match lv with
-	| Var _ | LReg _ -> ctx1
-	| PVar nm -> use ctx1 nm
-	| PArith(op, lv1, rv2) -> collect_lvalue (collect_rvalue ctx1 rv2) lv1
+	| Var _  -> ctx1
+	| _ -> collect_lvalue ctx1 lv
+	(*| PVar nm -> use ctx1 nm
+	(*| PArith(op, lv1, rv2) -> collect_lvalue (collect_rvalue ctx1 rv2) lv1*)
+	| Mem rv -> collect_rvalue ctx rv*)
 									
 and collect_rvalue ctx (rval,sl) = match rval with
 	| LV lv -> collect_lvalue ctx lv
@@ -145,7 +163,8 @@ and collect_lvalue ctx = function
 	| Var name -> use ctx name 
 	| PVar name	-> use ctx name
 	| LReg _ -> ctx
-	| PArith(op, lv1, rv2) -> collect_lvalue (collect_rvalue ctx rv2) lv1
+	(*| PArith(op, lv1, rv2) -> collect_lvalue (collect_rvalue ctx rv2) lv1*)
+	| Mem rv -> collect_rvalue ctx rv
 
 and collect_cond ctx = function
 	| Less(rv1, rv2) | Eq(rv1, rv2) -> collect_rvalue (collect_rvalue ctx rv1) rv2

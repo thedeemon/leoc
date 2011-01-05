@@ -20,7 +20,7 @@ and raw_statement =
   | Trash of bool
 	| PostMessage of int * rvalue * rvalue
   
-and lvalue = Var of name | PVar of name  | LReg of int | PArith of oper * lvalue * rvalue
+and lvalue = Var of name | PVar of name  | LReg of int | Mem of rvalue
 and rvalue = raw_rvalue * source_loc
 and raw_rvalue =
   | Val of int
@@ -46,7 +46,7 @@ let rec show_code n code =
   code |> List.map (show_stmt n >> tab n) |> String.concat "\n" 
 	
 and show_stmt n (stmt, sl) = 
-	let lstmt = if sl = !last_line then "" else begin
+	let lstmt = if true || sl = !last_line then "" else begin
 		last_line := sl;
 		Printf.sprintf "//%s\n%s" (prog_source sl) (String.make n ' ')		
 	end in
@@ -74,7 +74,8 @@ and show_lvalue = function
   | Var name -> name 
   | PVar name  -> "*" ^ name
   | LReg r -> Printf.sprintf "$Reg[%d]" r
-  | PArith(op, lv1, rv2) -> Printf.sprintf "$Mem[%s %s %s]" (show_lvalue lv1) (show_op op) (show_rvalue rv2)
+	| Mem rv -> Printf.sprintf "$Mem[%s]" (show_rvalue rv)
+  (*| PArith(op, lv1, rv2) -> Printf.sprintf "$Mem[%s %s %s]" (show_lvalue lv1) (show_op op) (show_rvalue rv2)*)
 
 and show_rvalue (rv, sl) = match rv with
   | LV lv -> show_lvalue lv
@@ -112,7 +113,7 @@ class mapper =
       
     method map_lvalue = function
       | Var _ | PVar _ | LReg _  as x -> x
-      | PArith(op, lv1, rv2) -> PArith(op, self#map_lvalue lv1, self#map_rvalue rv2)
+			| Mem rv -> Mem(self#map_rvalue rv)
 
 		method map_rvalue (rv, sl) = self#map_raw_rvalue rv, sl 
     method map_raw_rvalue = function
@@ -172,12 +173,8 @@ class simpler = object(self)
 			| rv -> super#map_raw_rvalue rv		      
 
 		method map_lvalue = function
-  		| PArith(Add, Var v, (Val 0,_)) -> PVar v 
-  		| PArith(Sub, Var v, (Val 0,_)) -> PVar v
-  		| PArith(op, lv1, rv2) -> 
-		      let s1 = self#map_lvalue lv1 and s2 = self#map_rvalue rv2 in
-      		if s1 = lv1 && s2 = rv2 then PArith(op, lv1, rv2) else self#map_lvalue (PArith(op, s1, s2))
-  		| _ as x -> x
+			| Mem(LV(Var v),_)  -> PVar v
+			| lv -> super#map_lvalue lv
 end
 
 let simp_code code = 
@@ -185,6 +182,28 @@ let simp_code code =
 
 let simp_rvalue rv =
 	let simp = new simpler in simp#map_rvalue rv
+
+(******************** register allocation ******************************)
+
+module RA = struct
+	type t = { free_land : int; free_list : int list }
+	
+	let newreg rs = match rs.free_list with 
+		| [] -> rs.free_land, { rs with free_land = rs.free_land + 1 }
+		| r::tl -> r, { rs with free_list = tl } 
+	
+	let freereg r rs =
+		if r = rs.free_land - 1 then { rs with free_land = rs.free_land - 1 }
+		else { rs with free_list = r::rs.free_list }
+		
+	let mark_as_used r rs = 
+		if r >= rs.free_land then { rs with free_land = r + 1 }
+		else { rs with free_list = List.remove rs.free_list r }	
+		
+	let empty = { free_land = 0; free_list = [] }
+	
+	let get_free_land rs = rs.free_land
+end
 
 (**************************** compile **********************************)
 
@@ -201,7 +220,7 @@ type func_info = {
 
 type frame_context = { 
   vars : int M.t;
-  regs : S.t;
+  regs : RA.t;
   funs : func_info M.t;
   thisfun : func_info;
   thisfunname : name
@@ -209,34 +228,39 @@ type frame_context = {
   
 type context = frame_context list;;
 
-let new_frame = { vars = M.empty; regs = S.empty; funs = M.empty; thisfun = { nparams = 0; return_size = 0; params = []}; thisfunname = "" };;
+let new_frame = { vars = M.empty; regs = RA.empty; funs = M.empty; thisfun = { nparams = 0; return_size = 0; params = []}; thisfunname = "" };;
  
-let newregi regs = let rec loop i = if S.mem i regs then loop (i+1) else i in loop 0;;
+(*let newregi regs = let rec loop i = if S.mem i regs then loop (i+1) else i in loop 0;;*)
 
 let usereg r = function
-  | f::cxs ->  {f with regs = S.add r f.regs}::cxs
+  | f::cxs ->  {f with regs = RA.mark_as_used r f.regs}::cxs
   | [] -> failwith "empty context in usereg";; 
 
 let newreg = function
-  | f::cxs ->  let r = newregi f.regs in  {f with regs = S.add r f.regs}::cxs, r
+  | f::cxs -> let r, rs = RA.newreg f.regs in {f with regs = rs}::cxs, r
   | [] -> failwith "empty context in newreg";;
 
+(*let newreg x = Prof.prof1 "newreg" newreg_ x*)
+
 let freereg r = function
-  | f::cxs -> {f with regs = S.remove r f.regs}::cxs
+  | f::cxs -> {f with regs = RA.freereg r f.regs}::cxs
   | [] -> failwith "empty context in freetmp";;  
 
 let rec addvar ctx name =
   match ctx with 
   | f::ctxs ->  
       if M.mem name f.vars then failwith (Printf.sprintf "variable '%s' already defined." name);
-      let r = newregi f.regs in
-      { f with vars = M.add name r f.vars; regs = S.add r f.regs } :: ctxs
+      let r, rs = RA.newreg f.regs in
+      { f with vars = M.add name r f.vars; regs = rs } :: ctxs
   | [] -> addvar [new_frame] name
 
 let getvar ctx name =
   match ctx with
   | f::cxs -> (try M.find name f.vars with Not_found -> failwith (Printf.sprintf "variable '%s' not found." name))
   | [] -> failwith "empty context in getvar" 
+
+(*let getvar ctx name = Prof.prof2 "getvar" getvar_ ctx name*)
+
 
 let addfun ctx name params retsize = 
   match ctx with
@@ -246,6 +270,7 @@ let addfun ctx name params retsize =
 let getfun ctx name = try M.find name (List.hd ctx).funs with Not_found -> failwith ("function not found: "^name)
 
 let use_src ctx = function Tmp r -> freereg r ctx, Asm.Reg r | TmpPnt r -> freereg r ctx, Asm.Pnt r | Src s -> ctx, s
+(*let use_src ctx x = Prof.prof2 "use_src" use_src_ ctx x*)
 let strip_src = function Tmp r -> Asm.Reg r | TmpPnt r -> Asm.Pnt r | Src s -> s
 
 let use_dst ctx = function TmpPntDest r -> freereg r ctx, Asm.PntDest r | Dst d -> ctx, d
@@ -260,7 +285,8 @@ let used_params ctx rv =
     | Byte x -> gather_rv lst x  
   and gather_lv lst = function
     | Var name | PVar name -> if getvar ctx name < 0 then name::lst else lst
-    | PArith(op, lv1, rv2) -> gather_rv (gather_lv lst lv1) rv2
+    (*| PArith(op, lv1, rv2) -> gather_rv (gather_lv lst lv1) rv2*)
+		| Mem rv -> gather_rv lst rv
     | LReg _ -> lst in
   gather_rv [] rv;;
 
@@ -282,17 +308,24 @@ let rec calc_retsize name code =
 
 module T = Triasm;;
 
+let lock_stmts = ref false
+let lock_rv = ref false
+let lock_lv = ref false
+let n_compile_stmt = ref 0
+
 let rec compile_code ctx prg =
-  let ctx', ccode = List.fold_left (fun (cx, compiled) cmd -> 
+  let ctx', ccode = (*Prof.rprof3 "compile_code: stmts" lock_stmts*) List.fold_left (fun (cx, compiled) cmd -> 
     let cx', cs = compile_stmt cx cmd in cx', cs::compiled) (ctx,[]) prg in
   ctx', List.rev ccode |> List.concat
   
 and compile prg = 
-  let frm = { new_frame with vars = M.add "args" 0 new_frame.vars; regs = S.add 0 new_frame.regs } in
+  let frm = { new_frame with vars = M.add "args" 0 new_frame.vars; regs = RA.mark_as_used 0 new_frame.regs } in
   try compile_code [frm] prg |> snd
   with Failure s -> Printf.printf "LeoC error: %s\n" s; []
 
-and compile_stmt ctx (stmt, sl) = match stmt with
+and compile_stmt ctx (stmt, sl) = 
+	incr n_compile_stmt;
+	match stmt with
   | DefVar name -> addvar ctx name, []
   | Print rv ->  
       let code, src, _ = compile_rvalue ctx rv in
@@ -371,7 +404,7 @@ and compile_stmt ctx (stmt, sl) = match stmt with
   | Call(name, rvs) -> 
       let code, src, ctx1 = compile_call ctx name rvs sl in 
       let fi = M.find name (List.hd ctx).funs in
-      let r = match src with Src(Asm.Reg x) -> x | _ -> failwith "strange funcall result" in
+      let r = match src with Src(Asm.Reg x) -> x | _ -> failc "strange funcall result" sl in
       let ctx2 = Enum.init fi.return_size ((+) r) |> Enum.fold freereg ctx in
       ctx2, code  
   | Alloc(lv, rv) ->
@@ -387,24 +420,27 @@ and compile_call ctx name rvs sl =
   let fn = getfun ctx name in
   let nrvs = List.length rvs in
   if nrvs <> fn.nparams then 
-    failwith (Printf.sprintf "wrong parameters count for '%s': %d and %d" name fn.nparams nrvs);        
+    failc (Printf.sprintf "wrong parameters count for '%s': %d and %d" name fn.nparams nrvs) sl;        
   let arg_code, args, ctx2 = List.fold_left (fun (code, srcs, cx) rv ->
     let code', src, cx' = compile_rvalue cx rv in code @ code', src::srcs, cx') ([], [], ctx) rvs in
-  let fp = try S.max_elt (List.hd ctx2).regs + 1 with Not_found -> 0 in
+  (*let fp = try S.max_elt (List.hd ctx2).regs + 1 with Not_found -> 0 in*)
+	let fp = RA.get_free_land (List.hd ctx2).regs in
   let gap = max fn.return_size fn.nparams in
   let delta = fp + gap - fn.nparams in  
   let pass_args = List.rev args |> List.mapi (fun i src -> T.Mov(ASInt, Asm.RegDest(i+delta), strip_src src),sl) in
   let ctx3 = Enum.init fn.return_size (fun i -> i + fp) |> Enum.fold usereg ctx in    
   arg_code @ pass_args @ [T.Call(name, fp + gap), sl], Src(Asm.Reg fp), ctx3
+
+(*and compile_rvalue ctx x = Prof.rprof2 "compile_rvalue" lock_rv compile_rvalue_ ctx x*)
   
 and compile_rvalue ctx (rval,sl) = match rval with
   | LV(Var name) -> [], Src(Asm.Reg (getvar ctx name)), ctx
   | LV(PVar name) -> [], Src(Asm.Pnt (getvar ctx name)), ctx
-  | LV(LReg _) -> failwith "LReg in rvalue"
-  | LV(PArith(op, lv1, rv2)) ->
-      let code, src, ctx1 = compile_rvalue ctx (Arith(op, (LV lv1, sl), rv2), sl) in
-      let src1 = match src with Tmp r -> TmpPnt r | _ -> failwith "wrong src type for PArith" in
-      code, src1, ctx1        
+  | LV(LReg _) -> failc "LReg in rvalue" sl
+	| LV(Mem rv) -> 
+			let code, src, ctx1 = compile_rvalue ctx rv in
+			let src1 = match src with Tmp r -> TmpPnt r | _ -> failc "wrong src type for Mem" sl in
+      code, src1, ctx1
   | Val n -> [], Src(Asm.Val n), ctx
   | Arith(op, rv1, rv2) -> 
       let code1, src1, ctx1 = compile_rvalue ctx rv1 in
@@ -419,16 +455,15 @@ and compile_rvalue ctx (rval,sl) = match rval with
       let code, src, ctx2 = compile_rvalue ctx1 rv in
       let ctx3, asrc = use_src ctx2 src in
       code @ [Triasm.Mov(ASInt, Asm.RegDest r, Asm.Val 0), sl; Triasm.Mov(ASByte, Asm.RegDest r, asrc), sl], Tmp r, ctx3
-  
+
 and compile_lvalue ctx = function 
   | Var name  -> [], Dst(Asm.RegDest (getvar ctx name)), ctx
   | PVar name -> [], Dst(Asm.PntDest (getvar ctx name)), ctx
   | LReg r -> [], Dst(Asm.RegDest r), ctx
-  | PArith(op, lv1, rv2) ->      
-			let sl = snd rv2 in
-      let code, src, ctx1 = compile_rvalue ctx (Arith(op, (LV lv1,sl), rv2), sl) in
-      let dst = match src with Tmp r -> TmpPntDest r | _ -> failwith "wrong src type for PArith" in
-      code, dst, ctx1        
+	|	Mem rv -> 
+			let code,src,ctx1 = compile_rvalue ctx rv in
+			let dst = match src with Tmp r -> TmpPntDest r | _ -> failc "wrong src type for Mem" (snd rv) in
+      code, dst, ctx1
   
 and compile_cond ctx = function
   | Less(rv1, rv2) ->

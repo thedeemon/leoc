@@ -18,20 +18,25 @@ let process prg bc_handler quiet trash prog_lines =
 	let maybe = if !verbose then (fun f x -> f x) else (fun f x -> ()) in 
 	prg |> maybe(Leo.show_code 0 >> print_endline);
 	maybe print_endline "\nexpanded Leo:\n";
-	let eprg = prg |> Leo.expand_code M.empty in
+	let eprg = prg |> Prof.prof2 "Leo.expand_code" Leo.expand_code M.empty in
 	eprg |> maybe(Leo.show_code 0 >> print_endline);
 	maybe print_endline "\nLeoC:\n";
-	let _, ccode = Leo.compile_code Leo.empty_context eprg in
+	let _, ccode = Prof.prof2 "Leo.compile_code" Leo.compile_code Leo.empty_context eprg in
 	ccode |> maybe(Leoc.show_code 0 >> print_endline);
+	maybe print_endline "\ncanonical LeoC:\n";
+	let cancode = ccode |> Prof.prof1 "Subexp.canonicalize" Subexp.canonicalize in
+	cancode |> maybe (Leoc.show_code 0 >> print_endline);
 	maybe print_endline "\nsimplified LeoC:\n";
-	let scode = ccode |> Optim.optimize |> Leoc.simp_code in 
-	scode |> maybe (Leoc.show_code 0 >> print_endline);
+	let scode = cancode |> Prof.prof1 "Optim.optimize" Optim.optimize |> Prof.prof1 "Leoc.simp_code" Leoc.simp_code in 
+	scode |> maybe (Leoc.show_code 0 >> print_endline);	
 	maybe print_endline "\nnoisy LeoC:\n";
-	let noisy_ccode = Noise.add_noise ((Leoc.Trash trash, 1) :: scode) in
+	let noisy_ccode = Prof.prof1 "Noise.add_noise" Noise.add_noise ((Leoc.Trash trash, 1) :: scode) in
 	maybe (Leoc.show_code 0 >> print_endline) noisy_ccode;
 	maybe print_endline "\nasm:\n";
-	let bytecode = noisy_ccode |> Leoc.compile |> Triasm.process quiet in
-	bc_handler bytecode;;
+	let bytecode = noisy_ccode |> Prof.prof1 "Leoc.compile" Leoc.compile |> Prof.prof2 "Triasm.process" Triasm.process quiet in
+	bc_handler bytecode;
+	Prof.show_prof ();
+	Printf.printf "n_compile_stmt=%d\n" !Leoc.n_compile_stmt;;
 
 let end_tokens = [Tokens.Leol; Tokens.Leof; Tokens.Lrem]
 
@@ -74,10 +79,10 @@ let main () =
 				let token = Leolex.lexer lbuf in
 				let res' = token::res in
 				if fst token = Tokens.Leof then List.rev res' else loop res' in
-			loop [] in			
-		let bc_handler2 = if fib_comp then Fib.compress >> bc_handler else bc_handler in 
+			Prof.prof1 "lexing" loop [] in			
+		let bc_handler2 = if fib_comp then Prof.prof1 "Fib.compress" Fib.compress >> bc_handler else bc_handler in 
 		(*List.iter (fun (t,p) -> Printf.printf "%s(%d) " (Tokens.show_tok t) p) tokens;*)
-    match Parse.parse_program tokens (not x64) with
+    match Prof.prof2 "parsing" Parse.parse_program tokens (not x64) with
 		| Parsercomb.Parsed((ast,_), unparsed) when 
 				List.for_all (Parse.get0 >> flip List.mem end_tokens) unparsed 	
 			->  process ast bc_handler2 quiet trash prog_lines

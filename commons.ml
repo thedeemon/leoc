@@ -21,5 +21,6 @@ let prog_lines = ref [|""|]
 let prog_source sl = 
 	try !prog_lines.(sl-1) with Invalid_argument _ -> "no source"
 	
+let failc str sl = failwith (Printf.sprintf "%s\nin line %d:\n%s" str sl (prog_source sl))	
 
 module M = Map.Make(String);;
