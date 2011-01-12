@@ -439,7 +439,10 @@ and compile_rvalue ctx (rval,sl) = match rval with
   | LV(LReg _) -> failc "LReg in rvalue" sl
 	| LV(Mem rv) -> 
 			let code, src, ctx1 = compile_rvalue ctx rv in
-			let src1 = match src with Tmp r -> TmpPnt r | _ -> failc "wrong src type for Mem" sl in
+			let src1 = match src with 
+				| Tmp r -> TmpPnt r
+				| Src(Asm.Reg r) -> Src(Asm.Pnt r)  
+				| _ -> failc "wrong src type for Mem" sl in
       code, src1, ctx1
   | Val n -> [], Src(Asm.Val n), ctx
   | Arith(op, rv1, rv2) -> 
@@ -462,7 +465,10 @@ and compile_lvalue ctx = function
   | LReg r -> [], Dst(Asm.RegDest r), ctx
 	|	Mem rv -> 
 			let code,src,ctx1 = compile_rvalue ctx rv in
-			let dst = match src with Tmp r -> TmpPntDest r | _ -> failc "wrong src type for Mem" (snd rv) in
+			let dst = match src with 
+				| Tmp r -> TmpPntDest r
+				| Src(Asm.Reg r) -> Dst(Asm.PntDest r) 
+				| _ -> failc "wrong src type for Mem" (snd rv) in
       code, dst, ctx1
   
 and compile_cond ctx = function

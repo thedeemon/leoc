@@ -29,8 +29,11 @@ let process prg bc_handler quiet trash prog_lines =
 	maybe print_endline "\nsimplified LeoC:\n";
 	let scode = cancode |> Prof.prof1 "Optim.optimize" Optim.optimize |> Prof.prof1 "Leoc.simp_code" Leoc.simp_code in 
 	scode |> maybe (Leoc.show_code 0 >> print_endline);	
+	maybe print_endline "\ndried LeoC:\n";
+	let dcode = scode |> Subexp.dry |> Subexp.canonicalize |> Subexp.dry |> Optim.optimize |> Leoc.simp_code in
+	dcode |> maybe (Leoc.show_code 0 >> print_endline);
 	maybe print_endline "\nnoisy LeoC:\n";
-	let noisy_ccode = Prof.prof1 "Noise.add_noise" Noise.add_noise ((Leoc.Trash trash, 1) :: scode) in
+	let noisy_ccode = Prof.prof1 "Noise.add_noise" Noise.add_noise ((Leoc.Trash trash, 1) :: dcode) in
 	maybe (Leoc.show_code 0 >> print_endline) noisy_ccode;
 	maybe print_endline "\nasm:\n";
 	let bytecode = noisy_ccode |> Prof.prof1 "Leoc.compile" Leoc.compile |> Prof.prof2 "Triasm.process" Triasm.process quiet in
