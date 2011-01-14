@@ -207,8 +207,10 @@ end
 
 (**************************** compile **********************************)
 
-type src = Tmp of int | TmpPnt of int | Src of Asm.src
-type dst = TmpPntDest of int | Dst of Asm.dst
+(*type src = Tmp of int | TmpPnt of int | Src of Asm.src
+type dst = TmpPntDest of int | Dst of Asm.dst*)
+type src = Asm.src
+type dst = Asm.dst
 
 module S = Set.Make(struct type t = int let compare = (-) end);;
 
@@ -269,12 +271,15 @@ let addfun ctx name params retsize =
 
 let getfun ctx name = try M.find name (List.hd ctx).funs with Not_found -> failwith ("function not found: "^name)
 
-let use_src ctx = function Tmp r -> freereg r ctx, Asm.Reg r | TmpPnt r -> freereg r ctx, Asm.Pnt r | Src s -> ctx, s
-(*let use_src ctx x = Prof.prof2 "use_src" use_src_ ctx x*)
-let strip_src = function Tmp r -> Asm.Reg r | TmpPnt r -> Asm.Pnt r | Src s -> s
+let use_src ctx = function 
+	| Asm.TmpReg r -> freereg r ctx, Asm.Reg r 
+	| Asm.TmpPnt r -> freereg r ctx, Asm.Pnt r 
+	| s -> ctx, s
 
-let use_dst ctx = function TmpPntDest r -> freereg r ctx, Asm.PntDest r | Dst d -> ctx, d
-let strip_dst = function TmpPntDest r -> Asm.RegDest r | Dst d -> d
+let strip_src = function Asm.TmpReg r -> Asm.Reg r | Asm.TmpPnt r -> Asm.Pnt r | s -> s
+
+let use_dst ctx = function Asm.TmpPntDest r -> freereg r ctx, Asm.PntDest r | d -> ctx, d
+let strip_dst = function Asm.TmpPntDest r -> Asm.RegDest r |  d -> d
 
 let used_params ctx rv =
   let rec gather_rv lst (rval,_) = match rval with
@@ -352,11 +357,11 @@ and compile_stmt ctx (stmt, sl) =
       let code2, src, ctx2 = compile_rvalue ctx1 rv in      
       let ctx3, adst = use_dst ctx2 dst in    
 			(match sz, List.rev code2, src with
-      | ASInt, (Triasm.Arith(op, d, a1, a2),sl) :: rest, Tmp r ->        
+      | ASInt, (Triasm.Arith(op, d, a1, a2),sl) :: rest, Asm.TmpReg r ->        
          	freereg r ctx3, code1 @ (List.rev ((Triasm.Arith(op, adst, a1, a2),sl) :: rest))
       | _, _, _ -> 
          	let ctx4, asrc = use_src ctx3 src in
-         	ctx4, code1 @ code2 @ [T.Mov(sz, adst, asrc),sl])
+         	ctx4, code1 @ code2 @ [T.Mov(sz, adst, src),sl])
   | Defun(name, params, code) ->
       let nparams = List.length params in
       let retsize = Option.default 0 (calc_retsize name code) in
@@ -404,7 +409,7 @@ and compile_stmt ctx (stmt, sl) =
   | Call(name, rvs) -> 
       let code, src, ctx1 = compile_call ctx name rvs sl in 
       let fi = M.find name (List.hd ctx).funs in
-      let r = match src with Src(Asm.Reg x) -> x | _ -> failc "strange funcall result" sl in
+      let r = match src with Asm.Reg x -> x | _ -> failc "strange funcall result" sl in
       let ctx2 = Enum.init fi.return_size ((+) r) |> Enum.fold freereg ctx in
       ctx2, code  
   | Alloc(lv, rv) ->
@@ -412,7 +417,7 @@ and compile_stmt ctx (stmt, sl) =
       let code2, src, ctx2 = compile_rvalue ctx1 rv in      
       let ctx3, adst = use_dst ctx2 dst in        
       let ctx4, asrc = use_src ctx3 src in
-      ctx4, code1 @ code2 @ [T.New(adst, asrc),sl]    
+      ctx4, code1 @ code2 @ [T.New(adst, src),sl]    
   | Break -> ctx, [Triasm.Break, sl]  
   | Trash _ -> ctx, []    
   
@@ -429,45 +434,45 @@ and compile_call ctx name rvs sl =
   let delta = fp + gap - fn.nparams in  
   let pass_args = List.rev args |> List.mapi (fun i src -> T.Mov(ASInt, Asm.RegDest(i+delta), strip_src src),sl) in
   let ctx3 = Enum.init fn.return_size (fun i -> i + fp) |> Enum.fold usereg ctx in    
-  arg_code @ pass_args @ [T.Call(name, fp + gap), sl], Src(Asm.Reg fp), ctx3
+  arg_code @ pass_args @ [T.Call(name, fp + gap), sl], Asm.Reg fp, ctx3
 
 (*and compile_rvalue ctx x = Prof.rprof2 "compile_rvalue" lock_rv compile_rvalue_ ctx x*)
   
 and compile_rvalue ctx (rval,sl) = match rval with
-  | LV(Var name) -> [], Src(Asm.Reg (getvar ctx name)), ctx
-  | LV(PVar name) -> [], Src(Asm.Pnt (getvar ctx name)), ctx
+  | LV(Var name) -> [], Asm.Reg (getvar ctx name), ctx
+  | LV(PVar name) -> [], Asm.Pnt (getvar ctx name), ctx
   | LV(LReg _) -> failc "LReg in rvalue" sl
 	| LV(Mem rv) -> 
 			let code, src, ctx1 = compile_rvalue ctx rv in
 			let src1 = match src with 
-				| Tmp r -> TmpPnt r
-				| Src(Asm.Reg r) -> Src(Asm.Pnt r)  
+				| Asm.TmpReg r -> Asm.TmpPnt r
+				| Asm.Reg r -> Asm.Pnt r  
 				| _ -> failc "wrong src type for Mem" sl in
       code, src1, ctx1
-  | Val n -> [], Src(Asm.Val n), ctx
+  | Val n -> [], Asm.Val n, ctx
   | Arith(op, rv1, rv2) -> 
       let code1, src1, ctx1 = compile_rvalue ctx rv1 in
       let code2, src2, ctx2 = compile_rvalue ctx1 rv2 in
       let ctx3, asrc1 = use_src ctx2 src1 in
       let ctx4, asrc2 = use_src ctx3 src2 in
       let ctx5, r = newreg ctx4 in 
-      code1 @ code2 @ [Triasm.Arith(op, Asm.RegDest r, asrc1, asrc2), sl], Tmp r, ctx5
+      code1 @ code2 @ [Triasm.Arith(op, Asm.RegDest r, src1, src2), sl], Asm.TmpReg r, ctx5
   | FCall(name, rvals) ->  compile_call ctx name rvals sl
   | Byte rv -> 
       let ctx1, r = newreg ctx in
       let code, src, ctx2 = compile_rvalue ctx1 rv in
       let ctx3, asrc = use_src ctx2 src in
-      code @ [Triasm.Mov(ASInt, Asm.RegDest r, Asm.Val 0), sl; Triasm.Mov(ASByte, Asm.RegDest r, asrc), sl], Tmp r, ctx3
+      code @ [Triasm.Mov(ASInt, Asm.RegDest r, Asm.Val 0), sl; Triasm.Mov(ASByte, Asm.RegDest r, asrc), sl], Asm.TmpReg r, ctx3
 
 and compile_lvalue ctx = function 
-  | Var name  -> [], Dst(Asm.RegDest (getvar ctx name)), ctx
-  | PVar name -> [], Dst(Asm.PntDest (getvar ctx name)), ctx
-  | LReg r -> [], Dst(Asm.RegDest r), ctx
+  | Var name  -> [], Asm.RegDest (getvar ctx name), ctx
+  | PVar name -> [], Asm.PntDest (getvar ctx name), ctx
+  | LReg r -> [], Asm.RegDest r, ctx
 	|	Mem rv -> 
 			let code,src,ctx1 = compile_rvalue ctx rv in
 			let dst = match src with 
-				| Tmp r -> TmpPntDest r
-				| Src(Asm.Reg r) -> Dst(Asm.PntDest r) 
+				| Asm.TmpReg r -> Asm.TmpPntDest r
+				| Asm.Reg r -> Asm.PntDest r 
 				| _ -> failc "wrong src type for Mem" (snd rv) in
       code, dst, ctx1
   
