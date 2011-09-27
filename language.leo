@@ -113,6 +113,8 @@ for c in hello
 end
 print(s) # should print 'HELLO! '
 
+print(" \n", 11)
+
 # type definitions for communicating with the host program:
 
 type mytype = {

@@ -203,10 +203,21 @@ module RA = struct
 	let empty = { free_land = 0; free_list = [] }
 	
 	let get_free_land rs = rs.free_land
+	
+	let show rs = 
+		let a = Array.make rs.free_land true in
+		List.iter (fun r -> a.(r) <- false) rs.free_list;
+		let s = Buffer.create 100 in
+		Buffer.add_string s "[";
+		Array.iteri (fun i used -> if used then Buffer.add_string s (Printf.sprintf "%d " i)) a;
+		Buffer.add_string s "]";
+		Buffer.contents s
+		
 end
 
 (**************************** compile **********************************)
-
+let echo name show value = print_endline (name ^ ": " ^ (show value)); value 
+	
 (*type src = Tmp of int | TmpPnt of int | Src of Asm.src
 type dst = TmpPntDest of int | Dst of Asm.dst*)
 type src = Asm.src
@@ -232,6 +243,9 @@ type context = frame_context list;;
 
 let new_frame = { vars = M.empty; regs = RA.empty; funs = M.empty; thisfun = { nparams = 0; return_size = 0; params = []}; thisfunname = "" };;
  
+let show_ctx = function
+	| [] -> ""
+	| f::fs -> RA.show f.regs
 (*let newregi regs = let rec loop i = if S.mem i regs then loop (i+1) else i in loop 0;;*)
 
 let usereg r = function
@@ -353,8 +367,13 @@ and compile_stmt ctx (stmt, sl) =
       ctx, [Triasm.While(ccond, ccode),sl]
   | Comp code -> let _, ccode = compile_code ctx code in ctx, ccode
   | Assign(sz, lv, rv) ->
+			(*ignore(echo "assign" (show_stmt 0) (stmt, sl));*)
       let code1, dst, ctx1 = compile_lvalue ctx lv in
+			(*ignore(echo "assign lvalue dst" Asm.show_dst dst);
+			ignore(echo "assign ctx after lvalue" show_ctx ctx1);*)
       let code2, src, ctx2 = compile_rvalue ctx1 rv in      
+			(*ignore(echo "assign rvalue src" Asm.show_src src);
+			ignore(echo "assign ctx after rvalue" show_ctx ctx2);*)
       let ctx3, adst = use_dst ctx2 dst in    
 			(match sz, List.rev code2, src with
       | ASInt, (Triasm.Arith(op, d, a1, a2),sl) :: rest, Asm.TmpReg r ->        
@@ -444,11 +463,15 @@ and compile_rvalue ctx (rval,sl) = match rval with
   | LV(LReg _) -> failc "LReg in rvalue" sl
 	| LV(Mem rv) -> 
 			let code, src, ctx1 = compile_rvalue ctx rv in
-			let src1 = match src with 
-				| Asm.TmpReg r -> Asm.TmpPnt r
-				| Asm.Reg r -> Asm.Pnt r  
-				| _ -> failc "wrong src type for Mem" sl in
-      code, src1, ctx1
+			let src1, code2, ctx2 = match src with 
+				| Asm.TmpReg r -> Asm.TmpPnt r, [], ctx1
+				| Asm.Reg r -> Asm.Pnt r, [], ctx1
+				| Asm.Pnt r -> 
+						let ctx', tr = newreg ctx1 in
+						Asm.TmpPnt tr, [Triasm.Mov(ASInt, Asm.RegDest tr, Asm.Pnt r),sl], ctx'
+				| Asm.TmpPnt r -> Asm.TmpPnt r, [Triasm.Mov(ASInt, Asm.RegDest r, Asm.Pnt r),sl], ctx1 						 
+				| _ -> failc (Printf.sprintf "wrong src type for Mem in compile_rvalue: src_pr=%c" (Asm.src_pr src)) sl in
+      code @ code2, src1, ctx2
   | Val n -> [], Asm.Val n, ctx
   | Arith(op, rv1, rv2) -> 
       let code1, src1, ctx1 = compile_rvalue ctx rv1 in
@@ -470,11 +493,15 @@ and compile_lvalue ctx = function
   | LReg r -> [], Asm.RegDest r, ctx
 	|	Mem rv -> 
 			let code,src,ctx1 = compile_rvalue ctx rv in
-			let dst = match src with 
-				| Asm.TmpReg r -> Asm.TmpPntDest r
-				| Asm.Reg r -> Asm.PntDest r 
-				| _ -> failc "wrong src type for Mem" (snd rv) in
-      code, dst, ctx1
+			let dst,code2,ctx2 = match src with 
+				| Asm.TmpReg r -> Asm.TmpPntDest r, [], ctx1
+				| Asm.Reg r -> Asm.PntDest r, [], ctx1
+				| Asm.Pnt r -> 
+						let ctx', tr = newreg ctx1 in
+						Asm.TmpPntDest tr, [Triasm.Mov(ASInt, Asm.RegDest tr, Asm.Pnt r), snd rv], ctx'
+				| Asm.TmpPnt r ->  Asm.TmpPntDest r, [Triasm.Mov(ASInt, Asm.RegDest r, Asm.Pnt r), snd rv], ctx1
+				| _ -> failc (Printf.sprintf "wrong src type for Mem in compile_lvalue: src_pr=%c" (Asm.src_pr src)) (snd rv) in
+      code @ code2, dst, ctx2
   
 and compile_cond ctx = function
   | Less(rv1, rv2) ->

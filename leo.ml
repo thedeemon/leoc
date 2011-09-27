@@ -478,22 +478,20 @@ and compile_stmt ctx (stmt, loc) = match stmt with
 			let print_code e = 
 				let _, code, ty, rc = compile_expr ctx e in
 				let sl = snd e in
-				let prcode = 
-					match ty, rc with
-					| TInt, [rv] -> [Leoc.Print rv, sl]
-					| TInt32, [rv] -> [Leoc.Print rv, sl]
-					| TByte, [rv] -> [Leoc.Print (Leoc.Byte rv, snd rv), sl]
-					| TArray _, _ ->
-							let k = uid () in
-							let ivar = Printf.sprintf "i_%d" k  in
-							let st = For([ivar, e], [
-									Print([LV(Var(mkpath ivar [])), sl]),sl
-								]) in
-							(match compile_stmt ctx (st,sl) with 
-								| _, Code cd -> Leoc.subst_code_by_stmt (function Leoc.Print x -> Some(Leoc.Prchar x) | _ -> None) cd									 
-								| _ -> failc "bad result of print compile" loc)						 
-					| _, _ -> failc (Printf.sprintf "bad argument type for print(%s): %s" (show_expr 0 e) (show_type ty)) loc in
-				code @ prcode  in
+				match ty, rc with
+				| TInt, [rv] -> code @ [Leoc.Print rv, sl]
+				| TInt32, [rv] -> code @ [Leoc.Print rv, sl]
+				| TByte, [rv] -> code @ [Leoc.Print (Leoc.Byte rv, snd rv), sl]
+				| TArray _, _ ->
+						let k = uid () in
+						let ivar = Printf.sprintf "i_%d" k  in
+						let st = For([ivar, e], [
+								Print([LV(Var(mkpath ivar [])), sl]),sl
+							]) in
+						(match compile_stmt ctx (st,sl) with 
+							| _, Code cd -> Leoc.subst_code_by_stmt (function Leoc.Print x -> Some(Leoc.Prchar x) | _ -> None) cd									 
+							| _ -> failc "bad result of print compile" loc)						 
+				| _, _ -> failc (Printf.sprintf "bad argument type for print(%s): %s" (show_expr 0 e) (show_type ty)) loc in				
 			ctx, Code(List.map print_code es |> List.concat)
 	| Expr e ->
 			let _, code, ty, rc = compile_expr ctx e in

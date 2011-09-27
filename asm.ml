@@ -53,6 +53,19 @@ let dst_of_src = function Reg r -> RegDest r | Pnt r -> PntDest r
 	| Val _ -> failwith "Val in Asm.dst_of_src"
 	| Src -> failwith "Src in Asm.dst_of_src"
 
+let show_dst = function 
+	| RegDest r -> Printf.sprintf "RegDest %d" r 
+	| PntDest r -> Printf.sprintf "PntDest %d" r
+	| TmpPntDest r ->  Printf.sprintf "TmpPntDest %d" r 
+	| Src1 -> "A" | Src2 -> "B"
+	
+let show_src = function 
+	| Reg r -> Printf.sprintf "Reg %d" r 
+	| TmpReg r -> Printf.sprintf "TmpReg %d" r 
+	| Pnt r -> Printf.sprintf "Tmp %d" r 
+	| TmpPnt r -> Printf.sprintf "TmpPnt %d" r 
+	| Val v -> Printf.sprintf "Val %d" v | Src -> "S"
+
 let oper_s = function
 	| Add->"ADD" | Mul->"MUL" | Mod->"MOD" | Div->"DIV" | Sub->"SUB" | Xor->"XOR"
 

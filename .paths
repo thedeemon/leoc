@@ -15,4 +15,3 @@ tests
 .hg/store
 .hg/store/data
 tests
-tests
