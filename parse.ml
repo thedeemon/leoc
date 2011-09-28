@@ -37,12 +37,12 @@ let ident = function
 	| _ -> Failed 
 
 let int_ = function    
-	| TT(Lint i, sl, _,_,_,_) :: ts -> log (string_of_int i); Parsed((i, sl), ts)
+	| TT(Lint i, sl, _,_,_,_) :: ts -> log (Int64.to_string i); Parsed((i, sl), ts)
 	| _ -> Failed
  			
 let string_ = function
 	| TT(Lstring s, sl, _,_,_,_) :: ts ->
-			let vals = String.explode s |> List.map (fun c -> Leo.Val(int_of_char c),sl) in Parsed((vals, sl), ts)
+			let vals = String.explode s |> List.map (fun c -> Leo.Val(Int64.of_int (int_of_char c)),sl) in Parsed((vals, sl), ts)
   | _ -> Failed			  			
 			
 let params = tok Llparen >>> p_list0 ident (tok Lcomma) >>= fun ps -> tok Lrparen >>> return ps
@@ -54,7 +54,7 @@ let hd_loc = function
 
 let funcall = function
 	| "print", es -> Leo.Comp [Leo.Print es, hd_loc es]
-	| "PostMessage", [(Leo.Val msg, sl); e1; e2] -> Leo.Comp [Leo.PostMessage(msg, e1, e2), sl]
+	| "PostMessage", [(Leo.Val msg, sl); e1; e2] -> Leo.Comp [Leo.PostMessage(Int64.to_int msg, e1, e2), sl]
 	| name, es -> Leo.Call(name, es) 
 
 let rec (prepare : (Tokens.token * source_loc) list -> ttoken list) = fun tok_list ->
@@ -148,8 +148,8 @@ and path = p_list ident (tok Ldot) >>= fun ns -> return (List.hd ns, List.tl ns)
 and seq s = (
 	log "seq";
 	(expr >>= fun e1 -> tok Ldot2 >>> expr >>= fun e2 -> return (Leo.Range(e1, e2)))
-	||| (expr >>= fun e1 -> tok Lrange >>> return (Leo.Range((Leo.Val 0, no_source), 
-					(Leo.Arith(Sub, (Leo.Length e1, snd e1), (Leo.Val 1, no_source)), snd e1))))
+	||| (expr >>= fun e1 -> tok Lrange >>> return (Leo.Range((Leo.Val 0L, no_source), 
+					(Leo.Arith(Sub, (Leo.Length e1, snd e1), (Leo.Val 1L, no_source)), snd e1))))
 	||| (path >>= fun p -> return (Leo.LV(Leo.Var p)))
 	) s	|> add_sl		
 	
@@ -187,7 +187,7 @@ and comparison s = (
 and field_def s = (
 		ident >>= fun name -> tok Lcolon >>> 
 		 ((atype >>= fun aty -> tok Llbracket >>> 
-		   ((int_ >>= fun i -> return (Leo.NVal i)) ||| (ident >>= fun nm -> return (Leo.NVar nm))) >>= fun n ->
+		   ((int_ >>= fun i -> return (Leo.NVal(Int64.to_int i))) ||| (ident >>= fun nm -> return (Leo.NVar nm))) >>= fun n ->
 			tok Lrbracket >>> return (Leo.FArray(aty, n)))
 		 ||| (tok Ltint >>> return Leo.FInt)
 		 ||| (ident >>= fun nm -> return (Leo.FStruct nm)))

@@ -38,7 +38,7 @@ let rec compile_stmt ctx (stmt,sl) = match stmt with
 	| Print a1 -> da (Asm.Print a1, sl)
 	| Prchar a1 -> da (Asm.Prchar a1, sl)
 	| New(d, a1) -> da (Asm.New(d, a1), sl)
-	| Call(lab, a1) -> da (Asm.Call(lab, Asm.Val a1), sl)
+	| Call(lab, a1) -> da (Asm.Call(lab, Asm.Val(Int64.of_int a1)), sl)
 	| Defun(name, code) -> 
 			let end_lab = Printf.sprintf "endproc_%d" (uid ()) in
 			Seq [Elt (Asm.Jmp end_lab, sl);

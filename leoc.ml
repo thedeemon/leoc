@@ -23,7 +23,7 @@ and raw_statement =
 and lvalue = Var of name | PVar of name  | LReg of int | Mem of rvalue
 and rvalue = raw_rvalue * source_loc
 and raw_rvalue =
-  | Val of int
+  | Val of int64
   | LV of lvalue
   | Arith of oper * rvalue * rvalue
   | FCall of name * rvalue list
@@ -79,7 +79,7 @@ and show_lvalue = function
 
 and show_rvalue (rv, sl) = match rv with
   | LV lv -> show_lvalue lv
-  | Val i -> string_of_int i
+  | Val i -> Int64.to_string i
   | Arith(op, rv1, rv2) -> Printf.sprintf "(%s %s %s)" (show_rvalue rv1) (show_op op) (show_rvalue rv2)
   | FCall(name, rvs) -> Printf.sprintf "%s(%s)" name (rvs |> List.map show_rvalue |> String.concat ", ")
   | Byte rv -> Printf.sprintf "byte(%s)" (show_rvalue rv)  
@@ -155,18 +155,18 @@ let subst_code_by_stmt f code =
 class simpler = object(self)
 		inherit mapper as super
 		method map_raw_rvalue = function
-  		| Arith(Mul, (Val a, _), (Val b, _)) -> Val (a * b) 
-  		| Arith(Add, (Val a, _), (Val b, _)) -> Val (a + b) 
-  		| Arith(Sub, (Val a, _), (Val b, _)) -> Val (a - b) 
-  		| Arith(Div, (Val a, _), (Val b, _)) -> Val (a / b) 
-  		| Arith(Mod, (Val a, _), (Val b, _)) -> Val (a mod b) 
-  		| Arith(Xor, (Val a, _), (Val b, _)) -> Val (a lxor b) 
-  		| Arith(Add, (rv1,_), (Val 0, _)) -> self#map_raw_rvalue rv1 
-  		| Arith(Add, (Val 0,_), (rv2,_)) -> self#map_raw_rvalue rv2 
-  		| Arith(Sub, (rv1,_), (Val 0, _)) -> self#map_raw_rvalue rv1 
-  		| Arith(Mul, (rv1,_), (Val 1, _)) -> self#map_raw_rvalue rv1 
-  		| Arith(Mul, (Val 1,_), (rv2,_)) -> self#map_raw_rvalue rv2 
-  		| Arith(Div, (rv1,_), (Val 1,_)) -> self#map_raw_rvalue rv1 
+  		| Arith(Mul, (Val a, _), (Val b, _)) -> Val (a ** b) 
+  		| Arith(Add, (Val a, _), (Val b, _)) -> Val (a ++ b) 
+  		| Arith(Sub, (Val a, _), (Val b, _)) -> Val (a -- b) 
+  		| Arith(Div, (Val a, _), (Val b, _)) -> Val (a // b) 
+  		| Arith(Mod, (Val a, _), (Val b, _)) -> Val (Int64.rem a b) 
+  		| Arith(Xor, (Val a, _), (Val b, _)) -> Val (Int64.logxor a b) 
+  		| Arith(Add, (rv1,_), (Val 0L, _)) -> self#map_raw_rvalue rv1 
+  		| Arith(Add, (Val 0L,_), (rv2,_)) -> self#map_raw_rvalue rv2 
+  		| Arith(Sub, (rv1,_), (Val 0L, _)) -> self#map_raw_rvalue rv1 
+  		| Arith(Mul, (rv1,_), (Val 1L, _)) -> self#map_raw_rvalue rv1 
+  		| Arith(Mul, (Val 1L,_), (rv2,_)) -> self#map_raw_rvalue rv2 
+  		| Arith(Div, (rv1,_), (Val 1L,_)) -> self#map_raw_rvalue rv1 
   		| Arith(op, rv1, rv2) ->  
 		      let s1 = self#map_rvalue rv1 and s2 = self#map_rvalue rv2 in
       		if s1 = rv1 && s2 = rv2 then Arith(op, rv1, rv2) else self#map_raw_rvalue (Arith(op, s1, s2))
@@ -485,7 +485,7 @@ and compile_rvalue ctx (rval,sl) = match rval with
       let ctx1, r = newreg ctx in
       let code, src, ctx2 = compile_rvalue ctx1 rv in
       let ctx3, asrc = use_src ctx2 src in
-      code @ [Triasm.Mov(ASInt, Asm.RegDest r, Asm.Val 0), sl; Triasm.Mov(ASByte, Asm.RegDest r, asrc), sl], Asm.TmpReg r, ctx3
+      code @ [Triasm.Mov(ASInt, Asm.RegDest r, Asm.Val 0L), sl; Triasm.Mov(ASByte, Asm.RegDest r, asrc), sl], Asm.TmpReg r, ctx3
 
 and compile_lvalue ctx = function 
   | Var name  -> [], Asm.RegDest (getvar ctx name), ctx

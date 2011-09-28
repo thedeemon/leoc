@@ -3,6 +3,11 @@ let (>>) f g x = g (f x)
 let flip f x y = f y x
 external identity : 'a -> 'a = "%identity"
 
+let (++) = Int64.add
+let (--) = Int64.sub
+let ( ** ) = Int64.mul
+let (//) = Int64.div
+
 let last_uid = ref 0
 let uid () = incr last_uid; !last_uid;;
 

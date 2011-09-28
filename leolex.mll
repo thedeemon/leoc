@@ -11,7 +11,7 @@
 
 	let hex s =
 		let s = String.sub s 2 (String.length s - 2) in
-		Scanf.sscanf s "%x" Std.identity;;
+		Scanf.sscanf s "%Lx" Std.identity;;
 
 	let getpos : Lexing.lexbuf -> Commons.source_loc = fun lb -> lb.Lexing.lex_curr_p.Lexing.pos_lnum;;
 
@@ -74,6 +74,6 @@ rule lexer = parse
  | ']'                   { Lrbracket, getpos lexbuf }
 
  | "0x" ['0'-'9' 'A'-'F' 'a'-'f']* { Lint(hex (Lexing.lexeme lexbuf)), getpos lexbuf }
- | ['0'-'9']+            { Lint (int_of_string (Lexing.lexeme lexbuf)), getpos lexbuf }
+ | ['0'-'9']+            { Lint (Int64.of_string (Lexing.lexeme lexbuf)), getpos lexbuf }
  | ['A'-'Z' 'a'-'z'] ['A'-'Z' 'a'-'z' '0'-'9' '_']*            { Lident (Lexing.lexeme lexbuf), getpos lexbuf }
  | eof                   { Leof, getpos lexbuf }

@@ -4,7 +4,7 @@ open Leoc
 (****************************** canonicalization ******************************)
 
 type svalue = SVar of name | SPVar of name  | SLReg of int | SMem of svalue 
-  | SVal of int
+  | SVal of int64
   | SArith of oper * svalue * svalue
   | SFCall of name * svalue list
   | SByte of svalue
@@ -12,7 +12,7 @@ type svalue = SVar of name | SPVar of name  | SLReg of int | SMem of svalue
 let rec sv_of_rv (rval, sl) = match rval with
 	| Val i -> SVal i
   | LV lv -> sv_of_lv lv
-  | Arith(Sub, rv1, (Val n,_)) -> SArith(Add, sv_of_rv rv1, SVal(0-n))
+  | Arith(Sub, rv1, (Val n,_)) -> SArith(Add, sv_of_rv rv1, SVal(0L -- n))
   | Arith(op, rv1, rv2) -> SArith(op, sv_of_rv rv1, sv_of_rv rv2)
   | FCall(name, rvlist) -> SFCall(name, List.map sv_of_rv rvlist)
   | Byte rv -> SByte(sv_of_rv rv) 
@@ -70,7 +70,7 @@ and cmp_tree a b = match a, b with
 	| Seq(op1, a1), Seq(op2, a2) -> cmp_tree a1.(0) a2.(0) 
 	
 and cmp_sv a b = match a,b with
-	| SVal x, SVal y -> y - x
+	| SVal x, SVal y -> Int64.compare y x
 	| SVal _, _ -> 1
 	| _, SVal _ -> -1
 	| _, _ -> compare a b  	
@@ -251,11 +251,14 @@ let apply_changes code =
 	o#map_code code
 	
 let dry code = 
-	RvHash.clear rv_actions; StHash.clear st_actions;
-	let _ = exam_code RM.empty code in 
-	print_endline "\nrv_actions:";
-	RvHash.iter (fun rv (Load name) -> Printf.printf "%s => %s\n" (show_rvalue (rv,1)) name) rv_actions;
-	print_endline "\nst_actions:";
-	StHash.iter (fun st alist -> Printf.printf "%s => %s\n" (show_stmt 0 st) 
-		(List.map (fun (nm,rv) -> Printf.sprintf "%s=%s" nm (show_rvalue rv)) alist |> String.concat "; ")) st_actions;
-	apply_changes code 
+	let _ = Prof.prof1 "Subexp.clear" (fun () -> RvHash.clear rv_actions; StHash.clear st_actions) () in
+	(*RvHash.clear rv_actions; StHash.clear st_actions;*)
+	let _ = Prof.prof2 "Subexp.exam_code" exam_code RM.empty code in 
+	(*if !verbose then begin
+		print_endline "\nrv_actions:";
+		RvHash.iter (fun rv (Load name) -> Printf.printf "%s => %s\n" (show_rvalue (rv,1)) name) rv_actions;
+		print_endline "\nst_actions:";
+		StHash.iter (fun st alist -> Printf.printf "%s => %s\n" (show_stmt 0 st) 
+			(List.map (fun (nm,rv) -> Printf.sprintf "%s=%s" nm (show_rvalue rv)) alist |> String.concat "; ")) st_actions
+	end;*)
+	Prof.prof1 "Subexp.apply_changes" apply_changes code 

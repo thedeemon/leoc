@@ -20,7 +20,7 @@ open Commons;;
 *)
 
 type dst = RegDest of int | PntDest of int | TmpPntDest of int | Src1 | Src2
-type src = Reg of int | Pnt of int | Val of int | TmpReg of int | TmpPnt of int | Src
+type src = Reg of int | Pnt of int | Val of int64 | TmpReg of int | TmpPnt of int | Src
 
 type 'loc command = 'loc raw_command * source_loc
 and 'loc raw_command = 
@@ -47,7 +47,7 @@ let comment_args ?(d=RegDest 0) ?(a1=Reg 0) ?(a2=Reg 0) () = (comment_dst d) ^ (
 let dst_pr = function RegDest _ -> 'R' | PntDest _ | TmpPntDest _ -> 'P' | Src1 -> 'A' | Src2 -> 'B' (*lvm6: src1=src2=temp*)
 let src_pr = function Reg _ | TmpReg _ -> 'R' | Pnt _ | TmpPnt _ -> 'P' | Val _ -> 'V' | Src -> 'S'
 let dst_n = function RegDest n | PntDest n | TmpPntDest n -> n | Src1 | Src2 -> 0
-let src_n = function Reg n | Pnt n | Val n | TmpReg n | TmpPnt n -> n | Src -> 0
+let src_n = function Reg n | Pnt n | TmpReg n | TmpPnt n -> Int64.of_int n | Src -> 0L | Val n64 -> n64
 let dst_of_src = function Reg r -> RegDest r | Pnt r -> PntDest r
  	| TmpReg _ -> failwith "TmpReg in Asm.dst_of_src" | TmpPnt r -> TmpPntDest r
 	| Val _ -> failwith "Val in Asm.dst_of_src"
@@ -64,7 +64,7 @@ let show_src = function
 	| TmpReg r -> Printf.sprintf "TmpReg %d" r 
 	| Pnt r -> Printf.sprintf "Tmp %d" r 
 	| TmpPnt r -> Printf.sprintf "TmpPnt %d" r 
-	| Val v -> Printf.sprintf "Val %d" v | Src -> "S"
+	| Val v -> Printf.sprintf "Val %Ld" v | Src -> "S"
 
 let oper_s = function
 	| Add->"ADD" | Mul->"MUL" | Mod->"MOD" | Div->"DIV" | Sub->"SUB" | Xor->"XOR"
@@ -73,18 +73,18 @@ let arg_size_suff = function
 	| ASByte -> "B" | ASInt32 -> "D" | ASInt -> ""
 
 let cmd_to_text = function
-	| Arith(op, d, a1, a2) -> Printf.sprintf "%s|%c%c%c, %d, %d, %d,\n" (oper_s op) (dst_pr d) (src_pr a1) (src_pr a2) (dst_n d) (src_n a1) (src_n a2)  
-	| Mov(sz, d, a1) -> Printf.sprintf "MOV%s|%c%cR, %d, %d,\n" (arg_size_suff sz) (dst_pr d) (src_pr a1) (dst_n d) (src_n a1)
-	| Jmple(addr, a1, a2) -> Printf.sprintf "JMPLE|R%c%c, %d, %d, %d, //%s\n" (src_pr a1) (src_pr a2) (fst addr) (src_n a1) (src_n a2) (snd addr)
-	| Jmpeq(addr, a1, a2) -> Printf.sprintf "JMPEQ|R%c%c, %d, %d, %d, //%s\n" (src_pr a1) (src_pr a2) (fst addr) (src_n a1) (src_n a2) (snd addr)
+	| Arith(op, d, a1, a2) -> Printf.sprintf "%s|%c%c%c, %d, %Ld, %Ld,\n" (oper_s op) (dst_pr d) (src_pr a1) (src_pr a2) (dst_n d) (src_n a1) (src_n a2)  
+	| Mov(sz, d, a1) -> Printf.sprintf "MOV%s|%c%cR, %d, %Ld,\n" (arg_size_suff sz) (dst_pr d) (src_pr a1) (dst_n d) (src_n a1)
+	| Jmple(addr, a1, a2) -> Printf.sprintf "JMPLE|R%c%c, %d, %Ld, %Ld, //%s\n" (src_pr a1) (src_pr a2) (fst addr) (src_n a1) (src_n a2) (snd addr)
+	| Jmpeq(addr, a1, a2) -> Printf.sprintf "JMPEQ|R%c%c, %d, %Ld, %Ld, //%s\n" (src_pr a1) (src_pr a2) (fst addr) (src_n a1) (src_n a2) (snd addr)
 	| Jmp addr -> Printf.sprintf "JMP, %d, //%s\n" (fst addr)  (snd addr)
-	| Print a1 -> Printf.sprintf "PRINT|R%cR, 0, %d,\n" (src_pr a1) (src_n a1)
-	| Prchar a1 -> Printf.sprintf "PRCHAR|R%cR, 0, %d,\n" (src_pr a1) (src_n a1)
-	| New(d, a1) -> Printf.sprintf "NEW|%c%cR, %d, %d,\n" (dst_pr d) (src_pr a1) (dst_n d) (src_n a1)
-	| Call(addr, a1) -> Printf.sprintf "CALL|R%cR, %d, %d, //%s\n" (src_pr a1) (fst addr) (src_n a1) (snd addr)
+	| Print a1 -> Printf.sprintf "PRINT|R%cR, 0, %Ld,\n" (src_pr a1) (src_n a1)
+	| Prchar a1 -> Printf.sprintf "PRCHAR|R%cR, 0, %Ld,\n" (src_pr a1) (src_n a1)
+	| New(d, a1) -> Printf.sprintf "NEW|%c%cR, %d, %Ld,\n" (dst_pr d) (src_pr a1) (dst_n d) (src_n a1)
+	| Call(addr, a1) -> Printf.sprintf "CALL|R%cR, %d, %Ld, //%s\n" (src_pr a1) (fst addr) (src_n a1) (snd addr)
 	| Ret -> "RET,\n"
 	| Label addr -> Printf.sprintf "//%d - %s:\n" (fst addr) (snd addr)
-	| PostMessage(msg, a1, a2) -> Printf.sprintf "POSTMSG|R%c%c, %d, %d, %d,\n" (src_pr a1) (src_pr a2) msg (src_n a1) (src_n a2) 
+	| PostMessage(msg, a1, a2) -> Printf.sprintf "POSTMSG|R%c%c, %d, %Ld, %Ld,\n" (src_pr a1) (src_pr a2) msg (src_n a1) (src_n a2) 
 	
 let cmd_size (cmd,sl) = match cmd with 
 	(*String.enum (to_s cmd) |> Enum.filter_map (function ',' -> Some 1 | _ -> None) |> Enum.count*) 
@@ -205,7 +205,7 @@ let use_source_regs prg =
 	done;
 	DynArray.mapi (fun i cmd -> cmd, (DynArray.get prg i |> snd)) p						
 						
-let cmd_to_micro = function
+(*let cmd_to_micro = function
 	| Arith(op, d, a1, a2) -> 
 			Printf.sprintf "LOAD_SRC2_%c, %d,\nLOAD_DEST_%c, %d,\nLOAD_SRC1_%c, %d,\n%s,\n" 
 				(src_pr a2) (src_n a2) (dst_pr d) (dst_n d) (src_pr a1) (src_n a1) (oper_s op)
@@ -234,7 +234,7 @@ let cmd_size_micro = function
 	| Print _ | Prchar _ -> 3 
 	| Call _ -> 4
 	| Jmp _ -> 2	| Ret -> 1	| Label _ | PostMessage _ -> 0;;
-		
+	*)	
 let last_line = ref 0
 		
 let cmd_to_lvm2 (cmd, sl) = 
@@ -243,37 +243,37 @@ let cmd_to_lvm2 (cmd, sl) =
 		Printf.sprintf "/// %s\n" (prog_source sl)
 	end in
 	let cs = match cmd with
-	| Arith(Add, RegDest dr, Reg r1, Val 1) when dr = r1 -> Printf.sprintf "INC, %d, 0, 0," dr  
-	| Arith(Add, RegDest dr, Reg r1, Val 4) when dr = r1 -> Printf.sprintf "INC4, %d, 0, 0," dr   
-	| Arith(Add, RegDest dr, Reg r1, Val 8) when dr = r1 && not !int32_is_int -> Printf.sprintf "INC8, %d, 0, 0," dr   
-	| Arith(Add, RegDest dr, Reg r1, Val v2) -> Printf.sprintf "ADD_RRV, %d, %d, %d," dr r1 v2  
+	| Arith(Add, RegDest dr, Reg r1, Val 1L) when dr = r1 -> Printf.sprintf "INC, %d, 0, 0," dr  
+	| Arith(Add, RegDest dr, Reg r1, Val 4L) when dr = r1 -> Printf.sprintf "INC4, %d, 0, 0," dr   
+	| Arith(Add, RegDest dr, Reg r1, Val 8L) when dr = r1 && not !int32_is_int -> Printf.sprintf "INC8, %d, 0, 0," dr   
+	| Arith(Add, RegDest dr, Reg r1, Val v2) -> Printf.sprintf "ADD_RRV, %d, %d, %Ld," dr r1 v2  
 	| Arith(Add, RegDest dr, Reg r1, Reg r2) -> Printf.sprintf "ADD_RRR, %d, %d, %d," dr r1 r2  
-	| Arith(op, d, a1, a2) -> Printf.sprintf "%s|%c%c%c, %d, %d, %d, //%s" (oper_s op) (dst_pr d) (src_pr a1) (src_pr a2) (dst_n d) (src_n a1) (src_n a2) (comment_args ~d:d ~a1:a1 ~a2:a2 ())  
+	| Arith(op, d, a1, a2) -> Printf.sprintf "%s|%c%c%c, %d, %Ld, %Ld, //%s" (oper_s op) (dst_pr d) (src_pr a1) (src_pr a2) (dst_n d) (src_n a1) (src_n a2) (comment_args ~d:d ~a1:a1 ~a2:a2 ())  
 	| Mov(ASInt, RegDest dr, Reg r1) -> Printf.sprintf "MOV_RR, %d, %d," dr r1
-	| Mov(ASInt, RegDest dr, Val v1) -> Printf.sprintf "MOV_RV, %d, %d," dr v1
-	| Mov(sz, d, a1) -> Printf.sprintf "MOV%s|%c%cR, %d, %d, //%s" (arg_size_suff sz) (dst_pr d) (src_pr a1) (dst_n d) (src_n a1) (comment_args ~d:d ~a1:a1 ())
+	| Mov(ASInt, RegDest dr, Val v1) -> Printf.sprintf "MOV_RV, %d, %Ld," dr v1
+	| Mov(sz, d, a1) -> Printf.sprintf "MOV%s|%c%cR, %d, %Ld, //%s" (arg_size_suff sz) (dst_pr d) (src_pr a1) (dst_n d) (src_n a1) (comment_args ~d:d ~a1:a1 ())
 	| Jmple(addr, Reg r1, Reg r2) -> Printf.sprintf "JMPLE_RR, %d, %d, %d, //%s"  (fst addr) r1 r2 (snd addr)
-	| Jmple(addr, a1, a2) -> Printf.sprintf "JMPLE|R%c%c, %d, %d, %d, //%s %s" (src_pr a1) (src_pr a2) (fst addr) (src_n a1) (src_n a2) (snd addr) (comment_args ~a1:a1 ~a2:a2 ())
-	| Jmpeq(addr, a1, a2) -> Printf.sprintf "JMPEQ|R%c%c, %d, %d, %d, //%s %s" (src_pr a1) (src_pr a2) (fst addr) (src_n a1) (src_n a2) (snd addr) (comment_args ~a1:a1 ~a2:a2 ())
+	| Jmple(addr, a1, a2) -> Printf.sprintf "JMPLE|R%c%c, %d, %Ld, %Ld, //%s %s" (src_pr a1) (src_pr a2) (fst addr) (src_n a1) (src_n a2) (snd addr) (comment_args ~a1:a1 ~a2:a2 ())
+	| Jmpeq(addr, a1, a2) -> Printf.sprintf "JMPEQ|R%c%c, %d, %Ld, %Ld, //%s %s" (src_pr a1) (src_pr a2) (fst addr) (src_n a1) (src_n a2) (snd addr) (comment_args ~a1:a1 ~a2:a2 ())
 	| Jmp addr -> Printf.sprintf "JMP, %d, //%s" (fst addr)  (snd addr)
-	| Print a1 -> Printf.sprintf "PRINT|R%cR, 0, %d, //%s" (src_pr a1) (src_n a1) (comment_args ~a2:a1 ())
-	| Prchar a1 -> Printf.sprintf "PRCHAR|R%cR, 0, %d, //%s" (src_pr a1) (src_n a1) (comment_args ~a2:a1 ())
-	| New(d, a1) -> Printf.sprintf "NEW|%c%cR, %d, %d, //%s" (dst_pr d) (src_pr a1) (dst_n d) (src_n a1) (comment_args ~d:d ~a1:a1 ())
-	| Call(addr, a1) -> Printf.sprintf "CALL|R%cR, %d, %d, //%s" (src_pr a1) (fst addr) (src_n a1) (snd addr)
+	| Print a1 -> Printf.sprintf "PRINT|R%cR, 0, %Ld, //%s" (src_pr a1) (src_n a1) (comment_args ~a2:a1 ())
+	| Prchar a1 -> Printf.sprintf "PRCHAR|R%cR, 0, %Ld, //%s" (src_pr a1) (src_n a1) (comment_args ~a2:a1 ())
+	| New(d, a1) -> Printf.sprintf "NEW|%c%cR, %d, %Ld, //%s" (dst_pr d) (src_pr a1) (dst_n d) (src_n a1) (comment_args ~d:d ~a1:a1 ())
+	| Call(addr, a1) -> Printf.sprintf "CALL|R%cR, %d, %Ld, //%s" (src_pr a1) (fst addr) (src_n a1) (snd addr)
 	| Ret -> "RET,"
 	| Label addr -> Printf.sprintf "//%d - %s:" (fst addr) (snd addr)
-	| PostMessage(msg, a1, a2) -> Printf.sprintf "POSTMSG|R%c%c, %d, %d, %d," (src_pr a1) (src_pr a2) msg (src_n a1) (src_n a2)
+	| PostMessage(msg, a1, a2) -> Printf.sprintf "POSTMSG|R%c%c, %d, %Ld, %Ld," (src_pr a1) (src_pr a2) msg (src_n a1) (src_n a2)
 	in ls ^ cs		
 
-let cmd_to_lvm4 (cmd, sl) = 
+(*let cmd_to_lvm4 (cmd, sl) = 
 	let ls = if sl = !last_line then "" else begin
 		last_line := sl;
 		Printf.sprintf "/// %s\n" (prog_source sl)
 	end in
 	let cs = match cmd with
-	| Arith(Add, RegDest dr, Reg r1, Val 1) when dr = r1 -> Printf.sprintf "INC, %d, 0, 0," dr  
-	| Arith(Add, RegDest dr, Reg r1, Val 4) when dr = r1 -> Printf.sprintf "INC4, %d, 0, 0," dr   
-	| Arith(Add, RegDest dr, Reg r1, Val 8) when dr = r1 && not !int32_is_int -> Printf.sprintf "INC8, %d, 0, 0," dr   
+	| Arith(Add, RegDest dr, Reg r1, Val 1L) when dr = r1 -> Printf.sprintf "INC, %d, 0, 0," dr  
+	| Arith(Add, RegDest dr, Reg r1, Val 4L) when dr = r1 -> Printf.sprintf "INC4, %d, 0, 0," dr   
+	| Arith(Add, RegDest dr, Reg r1, Val 8L) when dr = r1 && not !int32_is_int -> Printf.sprintf "INC8, %d, 0, 0," dr   
 	| Arith(op, d, a1, a2) -> Printf.sprintf "%s|%c%c%c, %d, %d, %d, //%s" (oper_s op) (dst_pr d) (src_pr a1) (src_pr a2) (dst_n d) (src_n a1) (src_n a2) (comment_args ~d:d ~a1:a1 ~a2:a2 ())  
 	| Mov(sz, d, a1) -> Printf.sprintf "MOV%s|%c%cR, %d, %d, //%s" (arg_size_suff sz) (dst_pr d) (src_pr a1) (dst_n d) (src_n a1) (comment_args ~d:d ~a1:a1 ())
 	| Jmple(addr, a1, a2) -> Printf.sprintf "JMPLE|R%c%c, %d, %d, %d, //%s %s" (src_pr a1) (src_pr a2) (fst addr) (src_n a1) (src_n a2) (snd addr) (comment_args ~a1:a1 ~a2:a2 ())
@@ -286,17 +286,17 @@ let cmd_to_lvm4 (cmd, sl) =
 	| Ret -> "RET,"
 	| Label addr -> Printf.sprintf "//%d - %s:" (fst addr) (snd addr)
 	| PostMessage(msg, a1, a2) -> Printf.sprintf "POSTMSG|R%c%c, %d, %d, %d," (src_pr a1) (src_pr a2) msg (src_n a1) (src_n a2)
-	in ls ^ cs		
+	in ls ^ cs*)		
 	
-let cmd_to_lvm5 (cmd, sl) = 
+(*let cmd_to_lvm5 (cmd, sl) = 
 	let ls = if sl = !last_line then "" else begin
 		last_line := sl;
 		Printf.sprintf "/// %s\n" (prog_source sl)
 	end in
 	let cs = match cmd with
-	| Arith(Add, RegDest dr, Reg r1, Val 1) when dr = r1 -> Printf.sprintf "INC, %d, 0, 0," dr  
-	| Arith(Add, RegDest dr, Reg r1, Val 4) when dr = r1 -> Printf.sprintf "INC4, %d, 0, 0," dr   
-	| Arith(Add, RegDest dr, Reg r1, Val 8) when dr = r1 && not !int32_is_int -> Printf.sprintf "INC8, %d, 0, 0," dr   
+	| Arith(Add, RegDest dr, Reg r1, Val 1L) when dr = r1 -> Printf.sprintf "INC, %d, 0, 0," dr  
+	| Arith(Add, RegDest dr, Reg r1, Val 4L) when dr = r1 -> Printf.sprintf "INC4, %d, 0, 0," dr   
+	| Arith(Add, RegDest dr, Reg r1, Val 8L) when dr = r1 && not !int32_is_int -> Printf.sprintf "INC8, %d, 0, 0," dr   
 	| Arith(op, d, a1, a2) -> Printf.sprintf "%s+%c%c%c, %d, %d, %d, //%s" (oper_s op) (dst_pr d) (src_pr a1) (src_pr a2) (dst_n d) (src_n a1) (src_n a2) (comment_args ~d:d ~a1:a1 ~a2:a2 ())  
 	| Mov(sz, d, a1) -> Printf.sprintf "MOV%s+%c%cR, %d, %d, //%s" (arg_size_suff sz) (dst_pr d) (src_pr a1) (dst_n d) (src_n a1) (comment_args ~d:d ~a1:a1 ())
 	| Jmple(addr, a1, a2) -> Printf.sprintf "JMPLE+R%c%c, %d, %d, %d, //%s %s" (src_pr a1) (src_pr a2) (fst addr) (src_n a1) (src_n a2) (snd addr) (comment_args ~a1:a1 ~a2:a2 ())
@@ -309,8 +309,10 @@ let cmd_to_lvm5 (cmd, sl) =
 	| Ret -> "RET,"
 	| Label addr -> Printf.sprintf "//%d - %s:" (fst addr) (snd addr)
 	| PostMessage(msg, a1, a2) -> Printf.sprintf "POSTMSG+R%c%c, %d, %d, %d," (src_pr a1) (src_pr a2) msg (src_n a1) (src_n a2)
-	in ls ^ cs		
-			
+	in ls ^ cs*)		
+		
+let lst64 ls = List.map Int64.of_int ls			
+					
 module LVM2 = struct			
 	let cmd n = n (* n << CMDSHIFT, CMDSHIFT = 0 now *)
 	let modshift = 8
@@ -350,32 +352,32 @@ module LVM2 = struct
 		| ASByte -> op_movb | ASInt32 -> op_movd | ASInt -> op_mov		
 		
 	let cmd_to_bc (cmd,sl) = match cmd with		
-		| Arith(Add, RegDest dr, Reg r1, Val 1) when dr = r1 -> [op_inc; dr; 0; 0]  
-		| Arith(Add, RegDest dr, Reg r1, Val 4) when dr = r1 -> [op_inc4; dr; 0; 0]   
-		| Arith(Add, RegDest dr, Reg r1, Val 8) when dr = r1 && not !int32_is_int -> [op_inc8; dr; 0; 0]   
-		| Arith(Add, RegDest dr, Reg r1, Val v2) -> [op_add_rrv; dr; r1; v2]  
-		| Arith(Add, RegDest dr, Reg r1, Reg r2) -> [op_add_rrr; dr; r1; r2]  
-		| Arith(op, d, a1, a2) -> [oper_code op lor modi d a1 a2; dst_n d; src_n a1; src_n a2]  
-		| Mov(ASInt, RegDest dr, Reg r1) -> [op_mov_rr; dr; r1]
-		| Mov(ASInt, RegDest dr, Val v1) -> [op_mov_rv; dr; v1]
-		| Mov(sz, d, a1) -> [(mov_op sz) lor modi d a1 (Reg 0); dst_n d; src_n a1]
-		| Jmple(addr, Reg r1, Reg r2) -> [op_jmple_rr; (fst addr); r1; r2]
-		| Jmple(addr, a1, a2) -> [op_jmple lor modi (RegDest 0) a1 a2; fst addr; src_n a1; src_n a2]
-		| Jmpeq(addr, a1, a2) -> [op_jmpeq lor modi (RegDest 0) a1 a2; fst addr; src_n a1; src_n a2]
-		| Jmp addr -> [op_jmp; fst addr]
-		| Print a1 -> [op_print lor modi (RegDest 0) a1 (Reg 0); 0; src_n a1]
-		| Prchar a1 -> [op_prchar lor modi (RegDest 0) a1 (Reg 0); 0; src_n a1]
-		| New(d, a1) -> [op_new lor modi d a1 (Reg 0); dst_n d; src_n a1]
-		| Call(addr, a1) -> [op_call lor modi (RegDest 0) a1 (Reg 0); fst addr; src_n a1]
-		| Ret -> [op_ret]
+		| Arith(Add, RegDest dr, Reg r1, Val 1L) when dr = r1 -> lst64 [op_inc; dr; 0; 0]  
+		| Arith(Add, RegDest dr, Reg r1, Val 4L) when dr = r1 -> lst64 [op_inc4; dr; 0; 0]   
+		| Arith(Add, RegDest dr, Reg r1, Val 8L) when dr = r1 && not !int32_is_int -> lst64 [op_inc8; dr; 0; 0]   
+		| Arith(Add, RegDest dr, Reg r1, Val v2) -> lst64 [op_add_rrv; dr; r1] @ [v2]  
+		| Arith(Add, RegDest dr, Reg r1, Reg r2) -> lst64 [op_add_rrr; dr; r1; r2]  
+		| Arith(op, d, a1, a2) -> lst64 [oper_code op lor modi d a1 a2; dst_n d] @ [src_n a1; src_n a2]  
+		| Mov(ASInt, RegDest dr, Reg r1) -> lst64 [op_mov_rr; dr; r1]
+		| Mov(ASInt, RegDest dr, Val v1) -> lst64 [op_mov_rv; dr] @ [v1]
+		| Mov(sz, d, a1) -> lst64 [(mov_op sz) lor modi d a1 (Reg 0); dst_n d] @  [src_n a1]
+		| Jmple(addr, Reg r1, Reg r2) -> lst64 [op_jmple_rr; (fst addr); r1; r2]
+		| Jmple(addr, a1, a2) -> lst64 [op_jmple lor modi (RegDest 0) a1 a2; fst addr] @ [src_n a1; src_n a2]
+		| Jmpeq(addr, a1, a2) -> lst64 [op_jmpeq lor modi (RegDest 0) a1 a2; fst addr] @ [src_n a1; src_n a2]
+		| Jmp addr -> lst64 [op_jmp; fst addr]
+		| Print a1 -> lst64 [op_print lor modi (RegDest 0) a1 (Reg 0); 0] @ [src_n a1]
+		| Prchar a1 -> lst64 [op_prchar lor modi (RegDest 0) a1 (Reg 0); 0] @ [src_n a1]
+		| New(d, a1) -> lst64 [op_new lor modi d a1 (Reg 0); dst_n d] @ [src_n a1]
+		| Call(addr, a1) -> lst64 [op_call lor modi (RegDest 0) a1 (Reg 0); fst addr] @ [src_n a1]
+		| Ret -> lst64 [op_ret]
 		| Label addr -> []	
-		| PostMessage(msg, a1, a2) -> [op_postmsg lor modi (RegDest 0) a1 a2; msg; src_n a1; src_n a2]	
+		| PostMessage(msg, a1, a2) -> lst64 [op_postmsg lor modi (RegDest 0) a1 a2; msg] @ [src_n a1; src_n a2]	
 
 	let asm_process  prg = prg |> optimize_jumps |> resolve_labels cmd_size (*|> use_source_regs*)
 	let cmd_to_lvmX = cmd_to_lvm2
 end
 
-module LVM5 = struct			
+(*module LVM5 = struct			
 	let cmd n = n*18 
 	let op_inc = cmd 0 
 	let op_mov = cmd 7
@@ -425,9 +427,9 @@ module LVM5 = struct
 
 	let asm_process  prg = prg |> optimize_jumps |> resolve_labels cmd_size
 	let cmd_to_lvmX = cmd_to_lvm5
-end
+end*)
 
-open LVM5				
+open LVM2				
 				
 let process quiet prg =
 	let cmds = prg |> asm_process in  

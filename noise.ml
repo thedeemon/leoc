@@ -4,9 +4,9 @@ open Leoc
 
 exception Badnum;;
 
-let primes = [2; 3; 5; 7; 11; 13; 17; 19; 23; 29; 31; 37; 41; 43; 47; 53; 59; 61; 67; 71; 
-  73; 79; 83; 89; 97; 101; 103; 107; 109; 113; 127; 131; 137; 139; 149; 151; 157; 163; 
-	167; 173; 179; 181; 191; 193; 197; 199; 211; 223; 227; 229; 233; 239; 241; 251];;
+let primes = [2L; 3L; 5L; 7L; 11L; 13L; 17L; 19L; 23L; 29L; 31L; 37L; 41L; 43L; 47L; 53L; 59L; 61L; 67L; 71L; 
+  73L; 79L; 83L; 89L; 97L; 101L; 103L; 107L; 109L; 113L; 127L; 131L; 137L; 139L; 149L; 151L; 157L; 163L; 
+	167L; 173L; 179L; 181L; 191L; 193L; 197L; 199L; 211L; 223L; 227L; 229L; 233L; 239L; 241L; 251L];;
 
 let gen_shape n = 
 	let rec gen level count = 
@@ -25,20 +25,20 @@ let test_shape n =
 	List.map string_of_int lst |> String.join " " |> print_endline
 
 let as_sum x = 
-	let a = Random.int ((abs x) + 1) in	a, x-a
+	let a = Random.int64 ((Int64.abs x) ++ 1L) in	a, x--a
 
 let as_mul x =
-	let factors = List.filter (fun p -> x mod p = 0) primes |> Array.of_list in
+	let factors = List.filter (fun p -> Int64.rem x p = 0L) primes |> Array.of_list in
 	let len = Array.length factors in
-	if len > 0 then	let a = factors.(Random.int len) in	a, x/a else raise Badnum  
+	if len > 0 then	let a = factors.(Random.int len) in	a, x//a else raise Badnum  
 
 let as_xor x = 
-	let a = Random.int 250 + 1 in	a, x lxor a
+	let a = Random.int64 250L ++ 1L in a, Int64.logxor x a
 
 let as_mod x =
-	if x <= 0 then raise Badnum else
-	let rec loop n = if n > x then n else loop (n*2) in
-	let a = loop 16 in x, a
+	if x <= 0L then raise Badnum else
+	let rec loop n = if n > x then n else loop (n ** 2L) in
+	let a = loop 16L in x, a
 	
 let compute x =
 	try match Random.int 4 with
@@ -49,9 +49,9 @@ let compute x =
 		| _ -> failwith "never happens"
 	with Badnum -> Add, as_sum x	 
 	
-type noise_operation = Def of name * source_loc | Set of name * int * source_loc
+type noise_operation = Def of name * source_loc | Set of name * int64 * source_loc
 
-let const_var x = Printf.sprintf "const_%d_%d" x (uid ())
+let const_var x = Printf.sprintf "const_%Ld_%d" x (uid ())
 
 let var_or_val sl x =
 	if Random.int 4 = 1 then 
@@ -59,7 +59,7 @@ let var_or_val sl x =
 	else (Val x, sl), []
 	
 let gen_cond sl tru =
-	let a = Random.int 192 in let b = Random.int 63 + 1 + a in
+	let a = Random.int64 192L in let b = Random.int64 63L ++ 1L ++ a in
 	if tru then
 		if Random.int 3 = 1 then Not(Less((Val b,sl), (Val a,sl))) else Less((Val a,sl), (Val b,sl))
 	else

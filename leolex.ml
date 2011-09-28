@@ -12,7 +12,7 @@
 
 	let hex s =
 		let s = String.sub s 2 (String.length s - 2) in
-		Scanf.sscanf s "%x" Std.identity;;
+		Scanf.sscanf s "%Lx" Std.identity;;
 
 	let getpos : Lexing.lexbuf -> Commons.source_loc = fun lb -> lb.Lexing.lex_curr_p.Lexing.pos_lnum;;
 
@@ -1257,7 +1257,7 @@ and __ocaml_lex_lexer_rec lexbuf __ocaml_lex_state =
 
   | 54 ->
 # 77 "leolex.mll"
-                         ( Lint (int_of_string (Lexing.lexeme lexbuf)), getpos lexbuf )
+                         ( Lint (Int64.of_string (Lexing.lexeme lexbuf)), getpos lexbuf )
 # 1262 "leolex.ml"
 
   | 55 ->

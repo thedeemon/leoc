@@ -6,28 +6,28 @@ let encode_signs numbers =
 		match lst with
 		| [] -> List.rev res 
 		| x::tail -> 
-				if x > 0 then loop tail (  x::1::res) else
-				if x = 0 then loop tail (     2::res) else 
-					            loop tail (0-x::3::res) in
+				if x > 0L then loop tail (  x::1L::res) else
+				if x = 0L then loop tail (     2L::res) else 
+					            loop tail (0L -- x::3L::res) in
 	loop numbers []
 
 let decode_signs numbers = 
 	let rec loop lst res = 
 		match lst with
 		| [] -> List.rev res
-		| 1::x::tail -> loop tail (x::res)
-		| 2::tail -> loop tail (0::res)
-		| 3::x::tail -> loop tail (0-x :: res) 
+		| 1L::x::tail -> loop tail (x::res)
+		| 2L::tail -> loop tail (0L::res)
+		| 3L::x::tail -> loop tail (0L -- x :: res) 
 		| _ -> failwith "decode_signs: bad data" in
 	loop numbers [] 
 	
 let fibs = DynArray.make 100;;
-DynArray.add fibs 1;
-DynArray.add fibs 2;;
+DynArray.add fibs 1L;
+DynArray.add fibs 2L;;
 
 let make_fibs x =
 	while DynArray.last fibs < x do
-		let z = DynArray.last fibs + DynArray.get fibs (DynArray.length fibs - 2) in
+		let z = DynArray.last fibs ++ DynArray.get fibs (DynArray.length fibs - 2) in
 		DynArray.add fibs z
 	done
 	
@@ -36,7 +36,7 @@ let fib_encode x =
 	let rec loop n i res st =
 		if i < 0 then res else
 		let f = DynArray.get fibs i in 
-		if f <= n then loop (n-f) (i-1) (1::res) true else loop n (i-1) (if st then 0::res else res) st in
+		if f <= n then loop (n--f) (i-1) (1::res) true else loop n (i-1) (if st then 0::res else res) st in
 	loop x (DynArray.length fibs - 1) [1] false	 	
 	
 let tobytes bits = 
@@ -57,26 +57,26 @@ let tobits bytes =
 	 									(x lsr 3) land 1; (x lsr 2) land 1; (x lsr 1) land 1; x  land 1]) bytes |> List.concat
 	
 let rec fib n = 
-	if n < 2 then n+1 else 
+	if n < 2 then Int64.of_int (n+1) else 
 	if n < DynArray.length fibs then DynArray.get fibs n else	
-	let z = fib (n-1) + fib (n-2) in
+	let z = fib (n-1) ++ fib (n-2) in
 	make_fibs z; z					
 																												
 let fib_decode lst =
 	let rec loop bits n last_bit res =
 		match bits with
-		| [] -> 0, []
-		| 1::tail -> if last_bit=1 then res, tail else loop tail (n+1) 1 (res + fib n)
+		| [] -> 0L, []
+		| 1::tail -> if last_bit=1 then res, tail else loop tail (n+1) 1 (res ++ fib n)
 		| 0::tail -> loop tail (n+1) 0 res
 		| _ -> failwith "bad bits" in
-	loop lst 0 0 0
+	loop lst 0 0 0L
 	
 let decompress bytes =
 	let bits = tobits bytes in
 	let rec loop bitlist res =
 		if bitlist=[] then List.rev res else 
 		let x, tail = fib_decode bitlist in
-		loop tail (if x=0 then res else x::res) in
+		loop tail (if x=0L then res else x::res) in
 	loop bits [] |> decode_signs
 
 (*let fcode = [202; 162; 127; 209; 122; 189; 255; 47; 55; 151; 137; 240; 169; 247; 158; 27; 

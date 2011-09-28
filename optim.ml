@@ -4,13 +4,13 @@ open Leoc
 
 (**************** partial evaluation ***************)
 
-type var_value =  Undefined | Copy of rvalue | Complex | CopyPlus of rvalue * int
+type var_value =  Undefined | Copy of rvalue | Complex | CopyPlus of rvalue * int64
 
 module S = Set.Make(String)
 
 let show_val = function
 	| Undefined -> "undef" | Copy rv -> "copy of "^(Leoc.show_rvalue rv) | Complex -> "something"
-	| CopyPlus(rv, n) -> Printf.sprintf "copy of %s + %d" (Leoc.show_rvalue rv) n
+	| CopyPlus(rv, n) -> Printf.sprintf "copy of %s + %Ld" (Leoc.show_rvalue rv) n
 	
 let show_vars = M.iter (fun name value -> Printf.printf "[%s = %s] " name (show_val value)) 
 		
@@ -64,6 +64,12 @@ let rec eval_stmt ctx ((stmt,sl) as org) = match stmt with
 	| PostMessage(msg, rv1, rv2) -> ctx, (PostMessage(msg, eval_rvalue ctx rv1, eval_rvalue ctx rv2),sl)
 
 and eval_assgn ctx lv rv = 		 
+  let just_inc, ctx1 = match lv, fst rv with
+		| Var name, Arith(Add, (LV(Var nm),sl), (Val n,_))
+		| Var name, Arith(Add, (Val n,_), (LV(Var nm),sl)) -> 
+			  (nm=name && (n=1L || n=4L || n = Int64.of_int !Leo.int_size)), setvar ctx name Complex 
+		| _,_ -> false, ctx in
+	if just_inc then ctx1, lv, rv else	
 	let lv' = eval_lvalue ctx lv and rv' = eval_rvalue ctx rv in
 	let ctx' = match lv' with
 		| Var name ->
@@ -96,7 +102,7 @@ and eval_rvalue ctx ((rval,sl) as org) = match rval with
 			(match getvar ctx name with
 			| Undefined -> failc ("evaluating undefined var " ^ name) sl 
 			| Copy rv -> simp_rvalue (Arith(Add, rv, (Val a,sl)),sl)
-			| CopyPlus(rv, b) -> simp_rvalue (Arith(Add, rv, (Val(a+b),sl)),sl)
+			| CopyPlus(rv, b) -> simp_rvalue (Arith(Add, rv, (Val(a++b),sl)),sl)
 			| Complex -> org) 
 	| Arith(op, rv1, rv2) -> 
 			let erv1 = eval_rvalue ctx rv1 and erv2 = eval_rvalue ctx rv2 in simp_rvalue (Arith(op, erv1, erv2),sl)
@@ -125,7 +131,7 @@ let eval code =
 
 let def (defs, uses) var = S.add var defs, uses
 let use (defs, uses) var = 
-	if !verbose then Printf.printf "#use %s\n" var; 
+	(*if !verbose then Printf.printf "#use %s\n" var;*) 
 	defs, S.add var uses
 	
 let show set = print_string "["; S.iter (Printf.printf "%s ") set; print_string "]\n"
@@ -184,10 +190,10 @@ let rec clean_stmt uses ((st,sl) as org) = match st with
 	| Comp code -> Some(Comp(clean_code uses code),sl) 
 
 and clean_code uses code =
-	let k = uid () in
-	if !verbose then (Printf.printf "#clean_code %d, uses = " k; show uses);
+	(*let k = uid () in
+	if !verbose then (Printf.printf "#clean_code %d, uses = " k; show uses);*)
 	let _, uses' = collect_code (S.empty, uses) code in
-	if !verbose then (Printf.printf "#uses' %d = " k; show uses');
+	(*if !verbose then (Printf.printf "#uses' %d = " k; show uses');*)
 	List.enum code |> Enum.filter_map (clean_stmt uses') |> List.of_enum 
 	
 let optimize code = code |> eval |> clean_code S.empty	
