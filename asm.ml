@@ -377,7 +377,7 @@ module LVM2 = struct
 		| Label addr -> []	
 		| PostMessage(msg, a1, a2) -> lst64 [op_postmsg lor modi (RegDest 0) a1 a2; msg] @ [src_n a1; src_n a2]	
 
-	let asm_process  prg = prg |> optimize_jumps |> resolve_labels cmd_size (*|> use_source_regs*)
+	let asm_process  prg = prg |> optimize_jumps |> resolve_labels cmd_size |> use_source_regs
 	let cmd_to_lvmX = cmd_to_lvm2
 end
 
