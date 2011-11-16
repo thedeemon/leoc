@@ -34,6 +34,7 @@ let process prg bc_handler quiet trash prog_lines =
 	  |> Prof.prof1 "Subexp.dry2" Subexp.dry 
 		|> Prof.prof1 "Optim.optimize2" Optim.optimize |> Prof.prof1 "Leoc.simp_code2" Leoc.simp_code in
 	dcode |> maybe (Leoc.show_code 0 >> print_endline);
+	(*let shcode = Shrink.shrink_vals dcode in*)
 	maybe print_endline "\nnoisy LeoC:\n";
 	let noisy_ccode = Prof.prof1 "Noise.add_noise" Noise.add_noise ((Leoc.Trash trash, 1) :: dcode) in
 	maybe (Leoc.show_code 0 >> print_endline) noisy_ccode;
@@ -56,7 +57,7 @@ let main () =
 		let x64 = Array.mem "-64" Sys.argv in
 		let bc_dump = Array.mem "-bcdump" Sys.argv in
 		let fib_comp = Array.mem "-fc" Sys.argv in
-		Leo.int_size := if x64 then 8 else 4;
+		Leo.int_size := if x64 then 8L else 4L;
 		let make_bc = try 
 				let i = Array.findi ((=) "-bc") Sys.argv in
 				if i+1 < Array.length Sys.argv then Some(Sys.argv.(i+1)) else None

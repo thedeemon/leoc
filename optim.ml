@@ -67,7 +67,7 @@ and eval_assgn ctx lv rv =
   let just_inc, ctx1 = match lv, fst rv with
 		| Var name, Arith(Add, (LV(Var nm),sl), (Val n,_))
 		| Var name, Arith(Add, (Val n,_), (LV(Var nm),sl)) -> 
-			  (nm=name && (n=1L || n=4L || n = Int64.of_int !Leo.int_size)), setvar ctx name Complex 
+			  (nm=name && (n=1L || n=4L || n = !Leo.int_size)), setvar ctx name Complex 
 		| _,_ -> false, ctx in
 	if just_inc then ctx1, lv, rv else	
 	let lv' = eval_lvalue ctx lv and rv' = eval_rvalue ctx rv in

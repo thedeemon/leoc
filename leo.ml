@@ -8,7 +8,7 @@ type num = NVal of int | NVar of name
 type field_type = FInt | FArray of array_type * num | FStruct of name
 type struct_type = (name * field_type) list
 
-let int_size = ref 4
+let int_size = ref 4L
 
 type code = statement list
 and statement = raw_statement * source_loc
@@ -367,8 +367,8 @@ let rec compile_path ctx sl (name, flds) =
 						let sty = try M.find sname !struct_types with Not_found -> failc ("unknown type "^sname) sl in
 						let fty = try List.assoc fld sty with Not_found -> failc (Printf.sprintf "unknown field %s in type %s" fld sname) sl in
 						let vty = valtype_of_ftype fty in
-						let fidx = List.findi (fun _ (fname, _) -> fname = fld) sty |> fst in
-						let lv1 = C.Mem(C.Arith(Add, (C.LV lv, sl), (C.Val(Int64.of_int (!int_size * fidx)), sl)),sl) in
+						let fidx = List.findi (fun _ (fname, _) -> fname = fld) sty |> fst |> Int64.of_int in
+						let lv1 = C.Mem(C.Arith(Add, (C.LV lv, sl), (C.Val(!int_size ** fidx), sl)),sl) in
 						loop lv1 vty fs (fld:: lfields) in
 	loop (C.Var name) (gettype ctx name) flds []
 
@@ -395,7 +395,7 @@ and compile_lvalue ctx sl = function
 			let ctx2, code2, pty, prc = compile_path ctx1 sl path in
 			let esl = snd ie in
 			let aty, alen, elt_size = match pty with
-				| TArray(TInt, len) -> TInt, len, Int64.of_int !int_size
+				| TArray(TInt, len) -> TInt, len, !int_size
 				| TArray(TInt32, len) -> TInt32, len, 4L
 				| TArray(TByte, len) -> TByte, len, 1L
 				| _ -> failc (Printf.sprintf "%s is not an array or a bad one" (show_path path)) sl in
@@ -510,18 +510,18 @@ and compile_stmt ctx (stmt, loc) = match stmt with
 								let init_code, delta, ity, clv = match ety, rc with
 									| TRange(n1, n2), [rv1; rv2] ->
 											[C.Assign(ASInt, C.Var iname, rv1),loc; 
-											 C.Assign(ASInt, C.Var end_name, (C.Arith(Add, rv2, (C.Val 1L,loc)),loc)),loc], 1, TInt, C.Var iname
+											 C.Assign(ASInt, C.Var end_name, (C.Arith(Add, rv2, (C.Val 1L,loc)),loc)),loc], 1L, TInt, C.Var iname
 									| TArray(aty, alen), [rv1; rv_len] ->
 											let rv_end, delta = match aty with
-												| TByte -> C.Arith(Add, rv1, rv_len), 1
-												| TInt32 -> C.Arith(Add, rv1, (C.Arith(Mul, rv_len, (C.Val 4L,loc)),loc)), 4
-												| TInt -> C.Arith(Add, rv1, (C.Arith(Mul, rv_len, (C.Val(Int64.of_int !int_size),loc)),loc)), !int_size
+												| TByte -> C.Arith(Add, rv1, rv_len), 1L
+												| TInt32 -> C.Arith(Add, rv1, (C.Arith(Mul, rv_len, (C.Val 4L,loc)),loc)), 4L
+												| TInt -> C.Arith(Add, rv1, (C.Arith(Mul, rv_len, (C.Val !int_size,loc)),loc)), !int_size
 												| _ -> failc "bad array type in for" loc in
 											[C.Assign(ASInt, C.Var iname, rv1),loc; 
 											 C.Assign(ASInt, C.Var end_name, (rv_end,loc)),loc], delta, aty, C.PVar iname
 									| _, _ -> failc "bad type in for" loc in
 								let next_code = [C.Assign(ASInt, Leoc.Var iname, 
-								                 (C.Arith(Add, (C.LV(C.Var iname),loc), (C.Val(Int64.of_int delta),loc)),loc)),loc] in
+								                 (C.Arith(Add, (C.LV(C.Var iname),loc), (C.Val delta,loc)),loc)),loc] in
 								let cond = C.Less((C.LV(C.Var iname),loc), (C.LV(C.Var end_name),loc)) in
 								def_code, ecode @ init_code, next_code, iname, ity, clv, cond, vname ) in
 			let def_code, init_code, next_code, ctx1, subs_map, conds =
@@ -609,7 +609,7 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 												 C.Assign(ASInt, C.Var lenvar, 
 												  (C.Arith(Sub, (C.LV(C.Var nm),loc), (C.Val 1L,loc)),loc)), loc], NVar lenvar in
 									let elt_size = match aty with 
-										| TInt32 -> 4L | TInt -> Int64.of_int !int_size | TByte -> 1L 
+										| TInt32 -> 4L | TInt -> !int_size | TByte -> 1L 
 										| _ -> failc "Tail of an array of an unsuported type" loc in
 									code, TArray(aty, len'), [C.Arith(Add, List.hd rc1, (C.Val elt_size,loc)), loc; rv_of_num ctx loc len']
 							| TRange(n1, n2) ->
@@ -630,7 +630,7 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 						| _, _ -> failc "wrong size type in New" loc in
 					let size_rv2 = match arrtype with 
 						| ASByte -> size_rv 
-						| ASInt -> Leoc.Arith(Mul, size_rv, (Leoc.Val(Int64.of_int !int_size), loc)), loc 
+						| ASInt -> Leoc.Arith(Mul, size_rv, (Leoc.Val !int_size, loc)), loc 
 						| ASInt32 -> Leoc.Arith(Mul, size_rv, (Leoc.Val 4L, loc)), loc in
 					let k = uid () in
 					let alen, code2, ctx2 = (match size_rv with
@@ -648,7 +648,7 @@ and (compile_expr : compilation_context -> expr -> compilation_context * Leoc.co
 					let size_rv = match arrtype with 
 						| ASByte -> C.Val len 
 						| ASInt32 -> C.Val (4L ** len) 
-						| ASInt -> C.Val (Int64.of_int !int_size ** len) in
+						| ASInt -> C.Val (!int_size ** len) in
 					let k = uid () in
 					let alen = NVal(Int64.to_int len) in
 					let arr_var = Printf.sprintf "array_%d" k in

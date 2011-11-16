@@ -70,7 +70,7 @@ let oper_s = function
 	| Add->"ADD" | Mul->"MUL" | Mod->"MOD" | Div->"DIV" | Sub->"SUB" | Xor->"XOR"
 
 let arg_size_suff = function
-	| ASByte -> "B" | ASInt32 -> "D" | ASInt -> ""
+	| ASByte -> "B" | ASInt32 -> if !int32_is_int then "" else "D" | ASInt -> ""
 
 let cmd_to_text = function
 	| Arith(op, d, a1, a2) -> Printf.sprintf "%s|%c%c%c, %d, %Ld, %Ld,\n" (oper_s op) (dst_pr d) (src_pr a1) (src_pr a2) (dst_n d) (src_n a1) (src_n a2)  
@@ -247,7 +247,11 @@ let cmd_to_lvm2 (cmd, sl) =
 	| Arith(Add, RegDest dr, Reg r1, Val 4L) when dr = r1 -> Printf.sprintf "INC4, %d, 0, 0," dr   
 	| Arith(Add, RegDest dr, Reg r1, Val 8L) when dr = r1 && not !int32_is_int -> Printf.sprintf "INC8, %d, 0, 0," dr   
 	| Arith(Add, RegDest dr, Reg r1, Val v2) -> Printf.sprintf "ADD_RRV, %d, %d, %Ld," dr r1 v2  
+	| Arith(Add, RegDest dr, TmpReg r1, Val v2) -> Printf.sprintf "ADD_RRV, %d, %d, %Ld," dr r1 v2  
 	| Arith(Add, RegDest dr, Reg r1, Reg r2) -> Printf.sprintf "ADD_RRR, %d, %d, %d," dr r1 r2  
+	| Arith(Add, RegDest dr, TmpReg r1, TmpReg r2) -> Printf.sprintf "ADD_RRR, %d, %d, %d," dr r1 r2  
+	| Arith(Add, RegDest dr, TmpReg r1, Reg r2) -> Printf.sprintf "ADD_RRR, %d, %d, %d," dr r1 r2  
+	| Arith(Add, RegDest dr, Reg r1, TmpReg r2) -> Printf.sprintf "ADD_RRR, %d, %d, %d," dr r1 r2  
 	| Arith(op, d, a1, a2) -> Printf.sprintf "%s|%c%c%c, %d, %Ld, %Ld, //%s" (oper_s op) (dst_pr d) (src_pr a1) (src_pr a2) (dst_n d) (src_n a1) (src_n a2) (comment_args ~d:d ~a1:a1 ~a2:a2 ())  
 	| Mov(ASInt, RegDest dr, Reg r1) -> Printf.sprintf "MOV_RR, %d, %d," dr r1
 	| Mov(ASInt, RegDest dr, Val v1) -> Printf.sprintf "MOV_RV, %d, %Ld," dr v1
@@ -349,7 +353,7 @@ module LVM2 = struct
 		(((dst_mod d) lsl 4) + ((src_mod a1) lsl 2) + (src_mod a2)) lsl modshift
 		
 	let mov_op = function
-		| ASByte -> op_movb | ASInt32 -> op_movd | ASInt -> op_mov		
+		| ASByte -> op_movb | ASInt32 -> if !int32_is_int then op_mov else op_movd | ASInt -> op_mov		
 		
 	let cmd_to_bc (cmd,sl) = match cmd with		
 		| Arith(Add, RegDest dr, Reg r1, Val 1L) when dr = r1 -> lst64 [op_inc; dr; 0; 0]  
