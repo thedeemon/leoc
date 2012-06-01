@@ -100,9 +100,9 @@ let rec iter_tree f = function
 
 let to_dynarr da tr = iter_tree (DynArray.add da) tr; da;;
 
-let process quiet prg = prg |> Prof.prof2 "Triasm.compile" compile []
+let process quiet jit prg = prg |> Prof.prof2 "Triasm.compile" compile []
   |> to_dynarr (DynArray.make 1000) 
-	|> Prof.prof2 "Asm.process" Asm.process quiet;;
+	|> Prof.prof3 "Asm.process" Asm.process quiet jit;;
 
 (*module A = Asm;;
 let prg = [

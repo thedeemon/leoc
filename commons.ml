@@ -18,6 +18,7 @@ let tab n s = (String.make n ' ') ^ s
 let verbose = ref false
 let log s = () (*if !verbose then (prerr_string (s^" "); flush stderr)*)
 
+type special_stmt = Trash of bool | Flush
 type source_loc = int (* line number *)
 let no_source : source_loc = -1
 let int32_is_int = ref false
@@ -27,5 +28,7 @@ let prog_source sl =
 	try !prog_lines.(sl-1) with Invalid_argument _ -> "no source"
 	
 let failc str sl = failwith (Printf.sprintf "%s\nin line %d:\n%s" str sl (prog_source sl))	
+
+let iftrue cond f x = if cond then f x else x
 
 module M = Map.Make(String);;

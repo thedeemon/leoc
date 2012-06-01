@@ -1,4 +1,6 @@
 .
 c:\ocaml\extlib
 C:\OCaml\lib
+.hg/store
+.hg/store/data
 tests

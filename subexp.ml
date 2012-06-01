@@ -187,8 +187,9 @@ let rec exam_code hist code =
 	
 and exam_stmt hist ((stmt, sl) as st) = match stmt with
   | Break 
-  | Trash _  
+  | Spec (Trash _)  
   | DefVar _ -> hist
+	| Spec (Flush) -> RM.empty
   | Alloc(lv, rv)  
   | Assign(_, lv, rv) -> 
 			let h = exam_rvalue st (exam_lvalue st hist lv) rv in

@@ -21,7 +21,7 @@ and raw_statement =
 	| Ret of expr
 	| Typedef of name * struct_type
 	| Typing of name * name
-	| Trash of bool
+	| Spec of special_stmt
 	| While of condition * code
 	| PostMessage of int * expr * expr
 
@@ -64,7 +64,7 @@ class mapper = object(self)
 		| Ret expr -> Ret(self#map_expr expr)
 		| Typedef _ as x -> x
 		| Typing _ as x -> x
-		| Trash _ as x -> x
+		| Spec _ as x -> x
 		| While(cond, code) -> While(self#map_cond cond, self#map_code code)
 		| PostMessage(n, e1, e2) -> PostMessage(n, self#map_expr e1, self#map_expr e2)
 
@@ -120,7 +120,8 @@ and show_stmt n = function
 			let delim = tab n "" in
 			Printf.sprintf "type %s = {\n%s%s" name (List.map show_field fields |> String.concat delim) (tab n "}")
 	| Typing(varname, typename) -> Printf.sprintf "%s : %s" varname typename
-	| Trash on -> if on then "$trash" else "$notrash"
+	| Spec (Trash on) -> if on then "$trash" else "$notrash"
+	| Spec Flush -> "$flush"
 	| While(con, code) -> Printf.sprintf "while %s\n%s\n%send" (show_cond n con) (show_code (n + 1) code) (tab n "")
 	| PostMessage(msg, e1, e2) -> Printf.sprintf "PostMessage(%d, %s, %s)" msg (show_expr n e1) (show_expr n e2)
 
@@ -547,7 +548,7 @@ and compile_stmt ctx (stmt, loc) = match stmt with
 				| _, _ -> failc (Printf.sprintf "trying to return a %s" (show_type ty)) loc)
 	| Typedef (name, ty) -> struct_types := M.add name ty !struct_types; ctx, Code []
 	| Typing (varname, typename) -> addvar ctx varname (TStruct typename), Code []
-	| Trash on -> ctx, Code [Leoc.Trash on, loc]
+	| Spec sp -> ctx, Code [Leoc.Spec sp, loc]
 	| PostMessage(msg, e1, e2) ->
 			let _, code1, ty1, rc1 = compile_expr ctx e1 
 			and _, code2, ty2, rc2 = compile_expr ctx e2 in

@@ -64,7 +64,8 @@ rule lexer = parse
  | "int32"               { Ltint32, getpos lexbuf }
  | "type"                { Ltype, getpos lexbuf }
  | "$trash"              { Ltrash, getpos lexbuf }
- | "$notrash"            { Lnotrash, getpos lexbuf } 
+ | "$notrash"            { Lnotrash, getpos lexbuf }
+ | "$flush"							 { Lflush, getpos lexbuf }
  | ','                   { Lcomma, getpos lexbuf }
  | '\\'                  { Lbackslash, getpos lexbuf }
  | ':'									 { Lcolon, getpos lexbuf }

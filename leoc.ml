@@ -17,7 +17,7 @@ and raw_statement =
   | Alloc of lvalue * rvalue
   | Comp of code
   | Break
-  | Trash of bool
+  | Spec of special_stmt 
 	| PostMessage of int * rvalue * rvalue
   
 and lvalue = Var of name | PVar of name  | LReg of int | Mem of rvalue
@@ -66,7 +66,8 @@ and show_stmt n (stmt, sl) =
   | Alloc(lv, rv) -> Printf.sprintf "%s <- new [%s]" (show_lvalue lv) (show_rvalue rv)
   | Comp code -> Printf.sprintf "{\n%s\n%s" (show_code (n+1) code) (tab n "}")
   | Break -> "break"
-  | Trash on -> if on then "$trash" else "$notrash"
+  | Spec (Trash on) -> if on then "$trash" else "$notrash"
+	| Spec Flush -> "$flush"
 	| PostMessage(msg, rv1, rv2) -> Printf.sprintf "PostMessage(%d, %s, %s)" msg (show_rvalue rv1) (show_rvalue rv2)
 	in lstmt ^ cstmt
 
@@ -98,7 +99,7 @@ class mapper =
 		
     method map_stmt (st,sl) = self#map_raw_stmt st, sl
     method map_raw_stmt = function
-      | Break | Trash _ | DefVar _ as x -> x
+      | Break | Spec _ | DefVar _ as x -> x
       | Assign(sz, lv, rv) -> Assign(sz, self#map_lvalue lv, self#map_rvalue rv)
       | Call(name, rvs) -> Call(name, List.map self#map_rvalue rvs)  
       | Defun(name, params, code) -> Defun(name, params, self#map_code code) 
@@ -318,7 +319,7 @@ let rec calc_retsize name code =
     match cmd with
     | Ret rvs -> update (List.length rvs) szo
     | DefVar _   | Assign _ | Call _  | Defun _  | Print _ | Prchar _ | Alloc _ | Break 
-		| Trash _ | PostMessage _ -> szo
+		| Spec _ | PostMessage _ -> szo
     | If(cond, code1, code2) -> 
         let szo1 = Option.map_default (flip update szo) szo (calc_retsize name code1) in
         Option.map_default (flip update szo1) szo1 (calc_retsize name code2) 
@@ -438,7 +439,7 @@ and compile_stmt ctx (stmt, sl) =
       let ctx4, asrc = use_src ctx3 src in
       ctx4, code1 @ code2 @ [T.New(adst, src),sl]    
   | Break -> ctx, [Triasm.Break, sl]  
-  | Trash _ -> ctx, []    
+  | Spec _ -> ctx, []    
   
 and compile_call ctx name rvs sl =
   let fn = getfun ctx name in

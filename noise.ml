@@ -79,7 +79,7 @@ let get_first_sl = function
 	| (_,sl)::tl -> sl 
 
 let rec complicate_stmt ((stmt,sl) as org) = match stmt with
-	| DefVar _ | 	Break | Trash _ -> [], org	
+	| DefVar _ | 	Break | Spec _ -> [], org	
 	| Assign(sz, lv, rv) -> 
 			let lst1, lv' = complicate_lv lv and lst2, rv' = complicate_rv rv in lst1 @ lst2, (Assign(sz, lv', rv'),sl) 
 	| Call(name, rvs) -> let lsts, rvs' = List.map complicate_rv rvs |> List.split in	List.concat lsts, (Call(name, rvs'),sl)   
@@ -135,7 +135,7 @@ and deconst_cond sl = function
 and deconst_code on code =
 	match on, code with
 	| _, [] -> [], []
-	| _, (Trash t, sl)::tail -> let lst, code' =  deconst_code t tail in lst, (Trash t, sl)::code'
+	| _, (Spec (Trash t), sl)::tail -> let lst, code' =  deconst_code t tail in lst, (Spec (Trash t), sl)::code'
 	| false, st::tail -> let lst, code' = deconst_code false tail in lst, st::code'
 	| true, st::tail ->
 			let lst1, st' = complicate_stmt st 
@@ -207,8 +207,8 @@ and flatten_notrash shape_code =
 	let rec flatten prevlev notr shcd = 
 		match notr, shcd with
 		| _, [] -> []
-		| _, ((lev, (Trash false, _)) as x)::tail -> x::(flatten lev true tail)
-		| _, (lev, (Trash true, sl))::tail -> (prevlev, (Trash true, sl))::(flatten lev false tail)
+		| _, ((lev, (Spec (Trash false), _)) as x)::tail -> x::(flatten lev true tail)
+		| _, (lev, (Spec (Trash true), sl))::tail -> (prevlev, (Spec (Trash true), sl))::(flatten lev false tail)
 		| true, (lev, st)::tail -> (prevlev, st)::(flatten prevlev true tail)
 		| false, x::tail -> x::(flatten prevlev false tail)  in   			
 	flatten 0 false shape_code		

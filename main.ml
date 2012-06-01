@@ -14,7 +14,7 @@ let write_le f i =
         output_byte f ((i lsr 16) land 0xff);
         output_byte f (let t = ((i lsr 24) land 0xff) in if i >= 0 then t else t lor 0x80)
 
-let process prg bc_handler quiet trash prog_lines =
+let process prg bc_handler quiet trash prog_lines jit =
 	let maybe = if !verbose then (fun f x -> f x) else (fun f x -> ()) in 
 	prg |> maybe(Leo.show_code 0 >> print_endline);
 	maybe print_endline "\nexpanded Leo:\n";
@@ -36,10 +36,11 @@ let process prg bc_handler quiet trash prog_lines =
 	dcode |> maybe (Leoc.show_code 0 >> print_endline);
 	(*let shcode = Shrink.shrink_vals dcode in*)
 	maybe print_endline "\nnoisy LeoC:\n";
-	let noisy_ccode = Prof.prof1 "Noise.add_noise" Noise.add_noise ((Leoc.Trash trash, 1) :: dcode) in
+	let noisy_ccode = Prof.prof1 "Noise.add_noise" Noise.add_noise ((Leoc.Spec(Trash trash), 1) :: dcode) in
 	maybe (Leoc.show_code 0 >> print_endline) noisy_ccode;
 	maybe print_endline "\nasm:\n";
-	let bytecode = noisy_ccode |> Prof.prof1 "Leoc.compile" Leoc.compile |> Prof.prof2 "Triasm.process" Triasm.process quiet in
+	let bytecode = noisy_ccode |> Prof.prof1 "Leoc.compile" Leoc.compile 
+	  |> Prof.prof3 "Triasm.process" Triasm.process quiet jit in
 	bc_handler bytecode;
 	if !verbose then (Prof.show_prof ();
 		Printf.printf "n_compile_stmt=%d\n" !Leoc.n_compile_stmt);;
@@ -48,7 +49,7 @@ let end_tokens = [Tokens.Leol; Tokens.Leof; Tokens.Lrem]
 
 let main () =
 	if Array.length Sys.argv < 2 then ((*Fib.test();*) 
-		Printf.printf "Usage: leoc <program.leo> [-v] [-q] [-tr] [-bc bytecode_file] [-64] [-fc] [-bcdump]") 
+		Printf.printf "Usage: leoc <program.leo> [-v] [-q] [-tr] [-bc bytecode_file] [-64] [-fc] [-bcdump] [-jit]") 
 	else
 	begin 
 		verbose := Array.mem "-v" Sys.argv;
@@ -57,6 +58,7 @@ let main () =
 		let x64 = Array.mem "-64" Sys.argv in
 		let bc_dump = Array.mem "-bcdump" Sys.argv in
 		let fib_comp = Array.mem "-fc" Sys.argv in
+		let jit = Array.mem "-jit" Sys.argv in
 		Leo.int_size := if x64 then 8L else 4L;
 		let make_bc = try 
 				let i = Array.findi ((=) "-bc") Sys.argv in
@@ -94,7 +96,7 @@ let main () =
     match Prof.prof2 "parsing" Parse.parse_program tokens (not x64) with
 		| Parsercomb.Parsed((ast,_), unparsed) when 
 				List.for_all (Parse.get0 >> flip List.mem end_tokens) unparsed 	
-			->  process ast bc_handler2 quiet trash prog_lines
+			->  process ast bc_handler2 quiet trash prog_lines jit
 		| Parsercomb.Parsed(ast, unparsed) -> 
 				List.take 30 unparsed |> List.map (Parse.get0 >> Tokens.show_tok) |> String.concat " " 
 				|>	Printf.printf "Parsing problem near: %s\n" 
