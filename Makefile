@@ -9,13 +9,13 @@ RESULT  = leoc
 
 # generate type information (.annot files)
 ANNOTATE = yes
-MSVC = true
+#MSVC = true
 
-OCAMLFLAGS = -I c:/ocaml/extlib
-OCAMLLDFLAGS = -I c:/ocaml/extlib
+OCAMLFLAGS = -I c:/overbld/ocaml/lib/site-lib/extlib
+OCAMLLDFLAGS = -I c:/overbld/ocaml/lib/site-lib/extlib -cclib "-L c:\mingw\lib"
 LIBS = extlib 
 
 # make target (see manual) : byte-code, debug-code, native-code, ...
-all: debug-code
+all: native-code
 
 include OCamlMakefile

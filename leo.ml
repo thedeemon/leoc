@@ -222,11 +222,13 @@ and expander ctx = object(self)
 			| NFun(name_list, exp) ->
 					if List.length name_list <> List.length elist then failwith (Printf.sprintf "wrong number of arguments for '%s'" name);
 					let k = uid () in
-					let subs, calcs = List.combine name_list elist |> List.map (argval k) |> List.split in
+					let used_vars = collect_vars exp in					
+					let subs, calcs = List.combine name_list elist |> 
+						List.filter (fst >> Hashtbl.exists used_vars) |> List.map (argval k) |> List.split in
 					(*Printf.printf "expanding %s(%s):\n" name (String.join ", " name_list);*)  
-					let subs_map = List.fold_left2 (fun m argname argexp -> 
+					let subs_map = List.fold_left (fun m (argname, argexp) -> 
 						(*Printf.printf "%s => %s;\n" argname (show_expr 0 argexp);*)
-						M.add argname argexp m) M.empty name_list subs in
+						M.add argname argexp m) M.empty subs in
 					(*Printf.printf "body:\n%s\n" (show_expr 0 exp);*)
 					let e = subst_expr subs_map k exp in
 					let precalcs = (List.enum calcs |> Enum.filter_map identity |> List.of_enum) @ [Expr e, no_source] in
@@ -241,11 +243,12 @@ end
 and argval k (argname, argexp) =
 	let var = Printf.sprintf "%s_%d" argname k in
 	let sl = snd argexp in
-	match fst argexp with
-	| Val _ | LV(Var _)	| Range _ -> argexp, None
-	| Arith _ | Call _ | LV(ArrElt _) | Length _ | Head _ | Tail _ | New _ | If _ | Comp _ -> 
-			(mkvar var, sl), Some(Def(var, [], argexp), sl)
-	| Lambda(name_list, e) -> (mkvar var, sl), Some(Def(var, name_list, e), sl)
+	let exp, calc =	match fst argexp with
+		| Val _ | LV(Var _)	| Range _ -> argexp, None
+		| Arith _ | Call _ | LV(ArrElt _) | Length _ | Head _ | Tail _ | New _ | If _ | Comp _ -> 
+				(mkvar var, sl), Some(Def(var, [], argexp), sl)
+		| Lambda(name_list, e) -> (mkvar var, sl), Some(Def(var, name_list, e), sl) in
+	(argname, exp), calc
 
 and subster (subs_map: expr Commons.M.t) k = object(self)
 	inherit mapper as super
@@ -285,6 +288,20 @@ and subst_code subs_map k code =
 
 and subst_expr subs k exp = 
 	let o = subster subs k in	o#map_expr exp
+	
+and collect_vars exp = 
+	let h = Hashtbl.create 13 in
+	let o = object(self)
+	  inherit mapper as super
+		method map_lvalue = function
+			| Var path as x -> Hashtbl.add h (pathname path) (); x
+			| ArrElt(path, e) as z -> Hashtbl.add h (pathname path) (); super#map_lvalue z
+
+		method map_raw_expr = function
+			| Call(name, elist) as x -> Hashtbl.add h name (); super#map_raw_expr x
+			| z -> super#map_raw_expr z
+	end in	
+	let _ = o#map_expr exp in	h
 	
 (*************************** compile ********************************)
 
